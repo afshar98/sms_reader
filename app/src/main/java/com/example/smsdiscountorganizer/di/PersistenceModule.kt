@@ -2,8 +2,10 @@ package com.example.smsdiscountorganizer.di
 
 import com.example.smsdiscountorganizer.data.repository.RoomOfferRepository
 import com.example.smsdiscountorganizer.data.repository.RoomScanRepository
+import com.example.smsdiscountorganizer.data.repository.RoomThemeRepository
 import com.example.smsdiscountorganizer.domain.offer.OfferRepository
 import com.example.smsdiscountorganizer.domain.scan.ScanRepository
+import com.example.smsdiscountorganizer.domain.settings.ThemeRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -20,4 +22,8 @@ abstract class PersistenceModule {
     @Binds
     @Singleton
     abstract fun bindScanRepository(repository: RoomScanRepository): ScanRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindThemeRepository(repository: RoomThemeRepository): ThemeRepository
 }

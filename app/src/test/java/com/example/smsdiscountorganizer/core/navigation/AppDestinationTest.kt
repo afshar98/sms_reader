@@ -34,4 +34,12 @@ class AppDestinationTest {
             AppDestination.selectedBottomNavigation(AppDestination.Details.route),
         )
     }
+
+    @Test
+    fun selectedOfferDetailsRouteKeepsOffersSelected() {
+        assertEquals(
+            AppDestination.Offers,
+            AppDestination.selectedBottomNavigation("details/42"),
+        )
+    }
 }

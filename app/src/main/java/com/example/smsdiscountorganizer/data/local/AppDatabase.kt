@@ -27,6 +27,9 @@ interface AppPreferenceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun save(preference: AppPreferenceEntity)
 
+    @Query("DELETE FROM app_preferences WHERE `key` = :key")
+    suspend fun delete(key: String)
+
     @Query("DELETE FROM app_preferences")
     suspend fun clearAll()
 }
