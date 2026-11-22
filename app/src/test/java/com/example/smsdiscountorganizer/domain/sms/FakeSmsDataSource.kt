@@ -7,9 +7,9 @@ class FakeSmsDataSource(
     var readCount: Int = 0
         private set
 
-    override suspend fun readInbox(): List<SmsMessage> {
+    override suspend fun readInbox(after: SmsCursor?): List<SmsMessage> {
         readCount += 1
         failure?.let { throw it }
-        return messages
+        return messages.filter { after == null || it.cursor > after }
     }
 }

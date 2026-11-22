@@ -55,5 +55,6 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

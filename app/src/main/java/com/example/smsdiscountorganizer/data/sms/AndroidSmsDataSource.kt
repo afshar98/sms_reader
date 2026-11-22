@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.Telephony
 import com.example.smsdiscountorganizer.domain.sms.SmsDataSource
+import com.example.smsdiscountorganizer.domain.sms.SmsCursor
 import com.example.smsdiscountorganizer.domain.sms.SmsInboxUnavailableException
 import com.example.smsdiscountorganizer.domain.sms.SmsMessage
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -17,7 +18,7 @@ import kotlinx.coroutines.withContext
 class AndroidSmsDataSource @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : SmsDataSource {
-    override suspend fun readInbox(): List<SmsMessage> = withContext(Dispatchers.IO) {
+    override suspend fun readInbox(after: SmsCursor?): List<SmsMessage> = withContext(Dispatchers.IO) {
         checkReadPermission()
 
         val projection = arrayOf(
@@ -26,12 +27,16 @@ class AndroidSmsDataSource @Inject constructor(
             Telephony.Sms.BODY,
             Telephony.Sms.DATE,
         )
+        val selection = after?.let {
+            "${Telephony.Sms._ID} > ?"
+        }
+        val selectionArgs = after?.let { arrayOf(it.smsId.toString()) }
         val cursor = context.contentResolver.query(
             Telephony.Sms.Inbox.CONTENT_URI,
             projection,
-            null,
-            null,
-            "${Telephony.Sms.DATE} DESC",
+            selection,
+            selectionArgs,
+            "${Telephony.Sms._ID} ASC",
         ) ?: throw SmsInboxUnavailableException()
 
         cursor.use {
