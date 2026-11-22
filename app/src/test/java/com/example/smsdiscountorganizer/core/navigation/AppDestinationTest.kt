@@ -23,6 +23,7 @@ class AppDestinationTest {
 
         assertTrue("offers" in routes)
         assertTrue("details" in routes)
+        assertTrue("sms_diagnostics" in routes)
         assertTrue("settings" in routes)
     }
 

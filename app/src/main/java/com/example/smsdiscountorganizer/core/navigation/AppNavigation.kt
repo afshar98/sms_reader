@@ -17,6 +17,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.smsdiscountorganizer.feature.dashboard.DashboardScreen
 import com.example.smsdiscountorganizer.feature.dashboard.DashboardViewModel
 import com.example.smsdiscountorganizer.feature.details.DetailsScreen
+import com.example.smsdiscountorganizer.feature.diagnostics.SmsDiagnosticsScreen
+import com.example.smsdiscountorganizer.feature.diagnostics.SmsDiagnosticsViewModel
 import com.example.smsdiscountorganizer.feature.offers.OffersScreen
 import com.example.smsdiscountorganizer.feature.settings.SettingsScreen
 
@@ -67,8 +69,16 @@ fun AppNavigation() {
             composable(AppDestination.Details.route) {
                 DetailsScreen()
             }
+            composable(AppDestination.SmsDiagnostics.route) {
+                val viewModel: SmsDiagnosticsViewModel = hiltViewModel()
+                SmsDiagnosticsScreen(viewModel)
+            }
             composable(AppDestination.Settings.route) {
-                SettingsScreen()
+                SettingsScreen(
+                    onOpenSmsDiagnostics = {
+                        navController.navigate(AppDestination.SmsDiagnostics.route)
+                    },
+                )
             }
         }
     }
