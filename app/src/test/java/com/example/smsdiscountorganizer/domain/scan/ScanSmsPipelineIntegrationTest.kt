@@ -8,6 +8,7 @@ import com.example.smsdiscountorganizer.domain.sms.cursor
 import com.example.smsdiscountorganizer.engine.extraction.PersianOfferExtractor
 import com.example.smsdiscountorganizer.engine.expiration.PersianDateResolver
 import com.example.smsdiscountorganizer.engine.text.PersianTextNormalizer
+import com.example.smsdiscountorganizer.engine.OfferExtractor
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -177,9 +178,42 @@ class ScanSmsPipelineIntegrationTest {
         assertEquals(SCAN_BATCH_SIZE, useCase.progress.value.processedMessages)
     }
 
-    private fun scanner(source: SmsDataSource, repository: InMemoryScanRepository): ScanSmsUseCase {
+    @Test
+    fun largeSyntheticInboxStreamsInBoundedCheckpoints() = runBlocking {
+        val messageCount = 10_000
+        val source = object : SmsDataSource {
+            override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
+                repeat(messageCount) { index ->
+                    emit(message(index + 1L, "ordinary message without an offer"))
+                }
+            }
+        }
+        var commits = 0
+        val repository = InMemoryScanRepository(onCommit = { commits++ })
+        val noOfferExtractor = OfferExtractor { null }
+        val useCase = scanner(source, repository, noOfferExtractor)
+
+        val result = useCase.scan() as ScanResult.Success
+
+        assertEquals(messageCount, result.messagesScanned)
+        assertEquals(messageCount, useCase.progress.value.processedMessages)
+        assertEquals(0, repository.offers.size)
+        assertEquals(messageCount / SCAN_BATCH_SIZE + 1, commits)
+        assertEquals(messageCount.toLong(), repository.state?.cursor?.smsId)
+    }
+
+    private fun scanner(
+        source: SmsDataSource,
+        repository: InMemoryScanRepository,
+        extractor: OfferExtractor? = null,
+    ): ScanSmsUseCase {
         val resolver = PersianDateResolver(clock, zone)
-        return ScanSmsUseCase(source, PersianOfferExtractor(expirationResolver = resolver), repository, clock)
+        return ScanSmsUseCase(
+            source,
+            extractor ?: PersianOfferExtractor(expirationResolver = resolver),
+            repository,
+            clock,
+        )
     }
 
     private fun message(id: Long, body: String?) = SmsMessage(id, "merchant", body, now.toEpochMilli())

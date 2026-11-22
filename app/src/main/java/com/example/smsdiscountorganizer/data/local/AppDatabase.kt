@@ -36,7 +36,7 @@ interface AppPreferenceDao {
 
 @Database(
     entities = [AppPreferenceEntity::class, OfferEntity::class, ScanStateEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(OfferConverters::class)
@@ -105,6 +105,15 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("DROP TABLE offers")
                 db.execSQL("ALTER TABLE offers_new RENAME TO offers")
+            }
+        }
+
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_offers_sourceDateMillis_sourceSmsId " +
+                        "ON offers (sourceDateMillis, sourceSmsId)",
+                )
             }
         }
     }

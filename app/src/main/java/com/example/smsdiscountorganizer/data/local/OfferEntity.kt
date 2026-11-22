@@ -1,12 +1,16 @@
 package com.example.smsdiscountorganizer.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
 import com.example.smsdiscountorganizer.domain.offer.ProductCategory
 
 /** Only extracted offer metadata is persisted; raw SMS fields are intentionally absent. */
-@Entity(tableName = "offers")
+@Entity(
+    tableName = "offers",
+    indices = [Index(value = ["sourceDateMillis", "sourceSmsId"], name = "index_offers_sourceDateMillis_sourceSmsId")],
+)
 data class OfferEntity(
     @PrimaryKey val sourceSmsId: Long,
     val offerTitle: String?,

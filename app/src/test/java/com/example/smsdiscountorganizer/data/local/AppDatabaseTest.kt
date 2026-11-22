@@ -3,6 +3,7 @@ package com.example.smsdiscountorganizer.data.local
 import android.database.sqlite.SQLiteDatabase
 import android.app.Application
 import androidx.room.Room
+import androidx.sqlite.db.SimpleSQLiteQuery
 import com.example.smsdiscountorganizer.data.repository.RoomOfferRepository
 import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
 import com.example.smsdiscountorganizer.domain.offer.MoneyCurrency
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -64,6 +66,21 @@ class AppDatabaseTest {
     }
 
     @Test
+    fun offerListOrderingUsesTheCompositeSortIndex() {
+        database.query(
+            SimpleSQLiteQuery(
+                "EXPLAIN QUERY PLAN SELECT * FROM offers ORDER BY sourceDateMillis DESC, sourceSmsId DESC",
+            ),
+        ).use { cursor ->
+            val detailsColumn = cursor.getColumnIndexOrThrow("detail")
+            val details = buildList {
+                while (cursor.moveToNext()) add(cursor.getString(detailsColumn))
+            }
+            assertTrue(details.any { it.contains("index_offers_sourceDateMillis_sourceSmsId") })
+        }
+    }
+
+    @Test
     fun clearingLocalDataRemovesOffersPreferencesAndScanState() = runBlocking {
         database.offerDao().upsertAll(listOf(offer(44L, "Ten percent")))
         database.appPreferenceDao().save(AppPreferenceEntity("theme", true))
@@ -92,8 +109,11 @@ class AppDatabaseTest {
         }
 
         database = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_1_2)
-            .addMigrations(AppDatabase.MIGRATION_2_3)
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+            )
             .allowMainThreadQueries()
             .build()
 
@@ -142,7 +162,7 @@ class AppDatabaseTest {
         }
 
         database = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_2_3)
+            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
             .allowMainThreadQueries()
             .build()
         val migrated = database.offerDao().observeAll().first().single()
