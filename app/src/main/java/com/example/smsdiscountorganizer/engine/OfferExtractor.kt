@@ -2,6 +2,7 @@ package com.example.smsdiscountorganizer.engine
 
 import com.example.smsdiscountorganizer.domain.offer.OfferMetadata
 import com.example.smsdiscountorganizer.domain.sms.SmsMessage
+import com.example.smsdiscountorganizer.engine.extraction.PersianOfferExtractor
 import javax.inject.Inject
 
 fun interface OfferExtractor {
@@ -13,11 +14,15 @@ class FakeOfferExtractor @Inject constructor() : OfferExtractor {
     override fun extract(message: SmsMessage): OfferMetadata? {
         if (message.body?.contains("[FAKE_OFFER]") != true) return null
         return OfferMetadata(
-            title = "Example offer",
             merchantName = "Example merchant",
-            discountCode = "DEMO10",
-            discountValue = "10%",
-            validUntilMillis = null,
+            offerTitle = "Example offer",
+            percentageDiscounts = listOf(10.0),
+            fixedDiscounts = null,
+            freeShipping = null,
+            couponCode = "DEMO10",
+            minimumPurchase = null,
+            productCategory = null,
+            confidence = 0.99,
         )
     }
 }

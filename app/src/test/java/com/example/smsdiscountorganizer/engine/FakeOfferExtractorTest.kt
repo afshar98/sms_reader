@@ -15,11 +15,15 @@ class FakeOfferExtractorTest {
 
         assertEquals(
             OfferMetadata(
-                title = "Example offer",
                 merchantName = "Example merchant",
-                discountCode = "DEMO10",
-                discountValue = "10%",
-                validUntilMillis = null,
+                offerTitle = "Example offer",
+                percentageDiscounts = listOf(10.0),
+                fixedDiscounts = null,
+                freeShipping = null,
+                couponCode = "DEMO10",
+                minimumPurchase = null,
+                productCategory = null,
+                confidence = 0.99,
             ),
             extractor.extract(message),
         )

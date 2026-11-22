@@ -2,6 +2,9 @@ package com.example.smsdiscountorganizer.domain.scan
 
 import com.example.smsdiscountorganizer.domain.offer.Offer
 import com.example.smsdiscountorganizer.domain.offer.OfferMetadata
+import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
+import com.example.smsdiscountorganizer.domain.offer.MoneyCurrency
+import com.example.smsdiscountorganizer.domain.offer.ProductCategory
 import com.example.smsdiscountorganizer.domain.offer.OfferRepository
 import com.example.smsdiscountorganizer.domain.scan.ScanRepository
 import com.example.smsdiscountorganizer.domain.sms.SmsCursor
@@ -44,6 +47,10 @@ class ScanSmsUseCaseTest {
         assertEquals(listOf(SmsCursor(100L, 9L), SmsCursor(50L, 12L)), source.cursors)
         assertEquals(10L, offers.offers.getValue(10L).sourceSmsId)
         assertEquals("Saved offer", offers.offers.getValue(10L).title)
+        assertEquals("Merchant", offers.offers.getValue(10L).merchantName)
+        assertEquals(listOf(20.0), offers.offers.getValue(10L).percentageDiscounts)
+        assertEquals(MonetaryAmount("5000", MoneyCurrency.Toman), offers.offers.getValue(10L).minimumPurchase)
+        assertEquals(ProductCategory.Apparel, offers.offers.getValue(10L).productCategory)
     }
 
     @Test
@@ -65,7 +72,17 @@ class ScanSmsUseCaseTest {
 
     private class TestOfferExtractor : OfferExtractor {
         override fun extract(message: SmsMessage): OfferMetadata =
-            OfferMetadata(title = "Saved offer", merchantName = null, discountCode = null, discountValue = null, validUntilMillis = null)
+            OfferMetadata(
+                merchantName = "Merchant",
+                offerTitle = "Saved offer",
+                percentageDiscounts = listOf(20.0),
+                fixedDiscounts = null,
+                freeShipping = null,
+                couponCode = null,
+                minimumPurchase = MonetaryAmount("5000", MoneyCurrency.Toman),
+                productCategory = ProductCategory.Apparel,
+                confidence = 0.9,
+            )
     }
 
     private class RepeatingSmsDataSource(private val messages: List<SmsMessage>) : SmsDataSource {

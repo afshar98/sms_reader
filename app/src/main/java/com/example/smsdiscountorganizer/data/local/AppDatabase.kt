@@ -9,6 +9,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
@@ -32,9 +33,10 @@ interface AppPreferenceDao {
 
 @Database(
     entities = [AppPreferenceEntity::class, OfferEntity::class, ScanStateEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
+@TypeConverters(OfferConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appPreferenceDao(): AppPreferenceDao
 
@@ -67,6 +69,39 @@ abstract class AppDatabase : RoomDatabase() {
                         PRIMARY KEY(scanKey)
                     )""".trimIndent(),
                 )
+            }
+        }
+
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE offers_new (
+                        sourceSmsId INTEGER NOT NULL,
+                        offerTitle TEXT,
+                        merchantName TEXT,
+                        discountCode TEXT,
+                        discountValue TEXT,
+                        percentageDiscounts TEXT,
+                        fixedDiscounts TEXT,
+                        freeShipping INTEGER,
+                        minimumPurchase TEXT,
+                        productCategory TEXT,
+                        extractionConfidence REAL NOT NULL,
+                        validUntilMillis INTEGER,
+                        sourceDateMillis INTEGER NOT NULL,
+                        extractedAtMillis INTEGER NOT NULL,
+                        PRIMARY KEY(sourceSmsId)
+                    )""".trimIndent(),
+                )
+                db.execSQL(
+                    """INSERT INTO offers_new (
+                        sourceSmsId, offerTitle, merchantName, discountCode, discountValue,
+                        extractionConfidence, validUntilMillis, sourceDateMillis, extractedAtMillis
+                    ) SELECT sourceSmsId, offerTitle, merchantName, discountCode, discountValue,
+                        0.0, validUntilMillis, sourceDateMillis, extractedAtMillis FROM offers""".trimIndent(),
+                )
+                db.execSQL("DROP TABLE offers")
+                db.execSQL("ALTER TABLE offers_new RENAME TO offers")
             }
         }
     }
