@@ -9,6 +9,10 @@ import com.example.smsdiscountorganizer.engine.extraction.CouponCodeExtractor
 import com.example.smsdiscountorganizer.engine.extraction.DiscountValueExtractor
 import com.example.smsdiscountorganizer.engine.extraction.PersianOfferExtractor
 import com.example.smsdiscountorganizer.engine.extraction.PurchaseConditionExtractor
+import com.example.smsdiscountorganizer.engine.expiration.PersianDateResolver
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
@@ -164,6 +168,20 @@ class StructuredOfferExtractorDetailTest {
         assertNull(result.couponCode)
         assertNull(result.minimumPurchase)
         assertNull(result.productCategory)
+    }
+
+    @Test
+    fun extractionUsesSmsReceivedTimestampForRelativeExpiration() {
+        val zone = ZoneId.of("Asia/Tehran")
+        val receivedAt = Instant.parse("2025-03-20T20:30:00Z")
+        val dateResolver = PersianDateResolver(Clock.fixed(receivedAt, zone), zone)
+        val offer = PersianOfferExtractor(expirationResolver = dateResolver)
+            .extract(SmsMessage(3L, null, "۲۰٪ تخفیف تا پایان امروز", receivedAt.toEpochMilli()))!!
+
+        assertEquals(
+            Instant.parse("2025-03-21T20:29:59.999999999Z").toEpochMilli(),
+            offer.validUntilMillis,
+        )
     }
 
     private fun extract(body: String): OfferMetadata = extractor.extract(message(body))!!

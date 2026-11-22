@@ -5,6 +5,10 @@ import com.example.smsdiscountorganizer.domain.sms.SmsMessage
 import com.example.smsdiscountorganizer.engine.OfferExtractor
 import com.example.smsdiscountorganizer.engine.classification.ClassificationCategory
 import com.example.smsdiscountorganizer.engine.classification.DiscountClassifier
+import com.example.smsdiscountorganizer.engine.expiration.ExpirationResolution
+import com.example.smsdiscountorganizer.engine.expiration.PersianDateResolver
+import java.time.Clock
+import java.time.ZoneId
 
 class PersianOfferExtractor(
     private val classifier: DiscountClassifier = DiscountClassifier(),
@@ -14,6 +18,7 @@ class PersianOfferExtractor(
     private val purchaseConditionExtractor: PurchaseConditionExtractor = PurchaseConditionExtractor(),
     private val productCategoryExtractor: ProductCategoryExtractor = ProductCategoryExtractor(),
     private val titleExtractor: OfferTitleExtractor = OfferTitleExtractor(),
+    private val expirationResolver: PersianDateResolver = defaultExpirationResolver(),
 ) : OfferExtractor {
     override fun extract(message: SmsMessage): OfferMetadata? {
         val body = message.body ?: return null
@@ -21,6 +26,8 @@ class PersianOfferExtractor(
         if (classification.category != ClassificationCategory.DISCOUNT) return null
 
         val discountValues = discountValueExtractor.extract(body)
+        val expiration = expirationResolver.resolve(body, message.dateMillis)
+            as? ExpirationResolution.Resolved
         val freeShipping = when {
             FREE_SHIPPING_NEGATION.containsMatchIn(body) -> false
             FREE_SHIPPING.containsMatchIn(body) -> true
@@ -36,10 +43,16 @@ class PersianOfferExtractor(
             minimumPurchase = purchaseConditionExtractor.extractMinimumPurchase(body),
             productCategory = productCategoryExtractor.extract(body),
             confidence = classification.confidence,
+            validUntilMillis = expiration?.expiresAt?.toEpochMilli(),
         )
     }
 
     private companion object {
+        fun defaultExpirationResolver(): PersianDateResolver {
+            val zoneId = ZoneId.systemDefault()
+            return PersianDateResolver(Clock.system(zoneId), zoneId)
+        }
+
         val FREE_SHIPPING = Regex("ارسال\\s*رایگان|پست\\s*رایگان")
         val FREE_SHIPPING_NEGATION = Regex("(?:ارسال|پست)\\s*رایگان\\s*(?:نیست|نداریم|نمی[‌\\s]*شود)")
     }

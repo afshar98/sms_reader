@@ -8,6 +8,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import java.time.Clock
+import java.time.ZoneId
 import javax.inject.Singleton
 
 @Module
@@ -23,5 +24,5 @@ abstract class SmsDataSourceModule {
 object SmsClockModule {
     @Provides
     @Singleton
-    fun provideClock(): Clock = Clock.systemUTC()
+    fun provideClock(zoneId: ZoneId): Clock = Clock.system(zoneId)
 }
