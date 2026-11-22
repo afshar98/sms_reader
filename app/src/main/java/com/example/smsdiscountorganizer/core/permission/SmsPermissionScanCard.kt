@@ -15,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 fun SmsPermissionScanCard(
     isScanning: Boolean,
     onScan: () -> Unit,
+    onFullRescan: (() -> Unit)? = null,
     onPermissionStatus: (SmsPermissionStatus) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -62,8 +64,15 @@ fun SmsPermissionScanCard(
             Text("دسترسی صندوق پیامک", style = MaterialTheme.typography.titleMedium)
             Text(permissionDescription(status), style = MaterialTheme.typography.bodyMedium)
             when (status) {
-                SmsPermissionStatus.Granted -> Button(onClick = onScan, enabled = !isScanning) {
-                    Text(if (isScanning) "در حال بررسی صندوق…" else "بررسی پیامک‌ها")
+                SmsPermissionStatus.Granted -> {
+                    Button(onClick = onScan, enabled = !isScanning) {
+                        Text(if (isScanning) "در حال بررسی صندوق…" else "بررسی پیامک‌های جدید")
+                    }
+                    onFullRescan?.let { rescan ->
+                        OutlinedButton(onClick = rescan, enabled = !isScanning) {
+                            Text("بازاسکن کامل صندوق")
+                        }
+                    }
                 }
                 SmsPermissionStatus.NotRequested, SmsPermissionStatus.RationaleRequired -> Button(
                     onClick = { showExplanation = true },

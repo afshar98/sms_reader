@@ -3,13 +3,14 @@ package com.example.smsdiscountorganizer.domain.sms
 import java.time.Clock
 import java.util.concurrent.CancellationException
 import javax.inject.Inject
+import kotlinx.coroutines.flow.count
 
 class ScanSmsInbox @Inject constructor(
     private val dataSource: SmsDataSource,
     private val clock: Clock,
 ) {
     suspend fun scan(): SmsInboxScanResult = try {
-        val messageCount = dataSource.readInbox().size
+        val messageCount = dataSource.readInbox().count()
         SmsInboxScanResult.Success(messageCount = messageCount, scannedAt = clock.instant())
     } catch (cancellation: CancellationException) {
         throw cancellation

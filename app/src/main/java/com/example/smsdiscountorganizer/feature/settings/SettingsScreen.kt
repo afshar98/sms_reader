@@ -50,6 +50,12 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenSmsDiagnostics: () -> Uni
         )
         Text("وضعیت دسترسی: ${permissionStatus.label()}", style = MaterialTheme.typography.bodyMedium)
         TextButton(onClick = onOpenSmsDiagnostics) { Text("جزئیات و عیب‌یابی صندوق پیامک") }
+        if (state.progress.isScanning) {
+            Text(
+                "${state.progress.processedMessages} پیام بررسی شد؛ ${state.progress.offersFound} پیشنهاد پیدا شد.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         state.scanMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
 
         Card(Modifier.fillMaxWidth()) {

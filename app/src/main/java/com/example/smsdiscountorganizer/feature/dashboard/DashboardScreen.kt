@@ -69,8 +69,25 @@ fun DashboardScreen(
             item {
                 SmsPermissionScanCard(
                     isScanning = state.isScanning,
-                    onScan = viewModel::scanNow,
+                    onScan = { viewModel.scanNow() },
+                    onFullRescan = { viewModel.scanNow(fullRescan = true) },
                 )
+            }
+            if (state.progress.isScanning) {
+                item {
+                    Text(
+                        "${state.progress.processedMessages} پیام بررسی شد؛ ${state.progress.offersFound} پیشنهاد پیدا شد.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+            if (state.progress.malformedMessages > 0) {
+                item {
+                    Text(
+                        "${state.progress.malformedMessages} پیام نامعتبر نادیده گرفته شد.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
             state.message?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary) } }
             state.readError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }

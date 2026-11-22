@@ -7,6 +7,7 @@ import com.example.smsdiscountorganizer.engine.classification.ClassificationCate
 import com.example.smsdiscountorganizer.engine.classification.DiscountClassifier
 import com.example.smsdiscountorganizer.engine.expiration.ExpirationResolution
 import com.example.smsdiscountorganizer.engine.expiration.PersianDateResolver
+import com.example.smsdiscountorganizer.engine.text.PersianTextNormalizer
 import java.time.Clock
 import java.time.ZoneId
 
@@ -19,14 +20,17 @@ class PersianOfferExtractor(
     private val productCategoryExtractor: ProductCategoryExtractor = ProductCategoryExtractor(),
     private val titleExtractor: OfferTitleExtractor = OfferTitleExtractor(),
     private val expirationResolver: PersianDateResolver = defaultExpirationResolver(),
+    private val textNormalizer: PersianTextNormalizer = PersianTextNormalizer(),
 ) : OfferExtractor {
     override fun extract(message: SmsMessage): OfferMetadata? {
-        val body = message.body ?: return null
+        val originalBody = message.body ?: return null
+        val body = textNormalizer.normalize(originalBody)
         val classification = classifier.classify(body)
         if (classification.category != ClassificationCategory.DISCOUNT) return null
 
         val discountValues = discountValueExtractor.extract(body)
-        val expiration = expirationResolver.resolve(body, message.dateMillis)
+        val expirationText = EXPIRATION_CONTEXT.find(body)?.let { body.substring(it.range.first) } ?: body
+        val expiration = expirationResolver.resolve(expirationText, message.dateMillis)
             as? ExpirationResolution.Resolved
         val freeShipping = when {
             FREE_SHIPPING_NEGATION.containsMatchIn(body) -> false
@@ -39,7 +43,7 @@ class PersianOfferExtractor(
             percentageDiscounts = discountValues.percentageDiscounts,
             fixedDiscounts = discountValues.fixedDiscounts,
             freeShipping = freeShipping,
-            couponCode = couponCodeExtractor.extract(body),
+            couponCode = couponCodeExtractor.extract(originalBody),
             minimumPurchase = purchaseConditionExtractor.extractMinimumPurchase(body),
             productCategory = productCategoryExtractor.extract(body),
             confidence = classification.confidence,
@@ -55,5 +59,6 @@ class PersianOfferExtractor(
 
         val FREE_SHIPPING = Regex("ارسال\\s*رایگان|پست\\s*رایگان")
         val FREE_SHIPPING_NEGATION = Regex("(?:ارسال|پست)\\s*رایگان\\s*(?:نیست|نداریم|نمی[‌\\s]*شود)")
+        val EXPIRATION_CONTEXT = Regex("(?:تا\\s+|مهلت(?:\\s+استفاده)?\\s*[:：]?\\s*|انقضا(?:ی)?\\s*[:：]?\\s*|اعتبار\\s*[:：]?\\s*|expires?\\s+|valid\\s+until\\s+)", RegexOption.IGNORE_CASE)
     }
 }

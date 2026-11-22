@@ -16,6 +16,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -56,8 +57,9 @@ class ScanSmsUseCaseTest {
     @Test
     fun cancellationPropagatesWithoutCommittingOffersOrCheckpoint() = runBlocking {
         val source = object : SmsDataSource {
-            override suspend fun readInbox(after: SmsCursor?): List<SmsMessage> =
+            override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
                 throw CancellationException("cancel scan")
+            }
         }
         val offers = InMemoryOfferRepository()
         val scans = InMemoryScanRepository(offers)
@@ -88,9 +90,9 @@ class ScanSmsUseCaseTest {
     private class RepeatingSmsDataSource(private val messages: List<SmsMessage>) : SmsDataSource {
         val cursors = mutableListOf<SmsCursor?>()
 
-        override suspend fun readInbox(after: SmsCursor?): List<SmsMessage> {
+        override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
             cursors += after
-            return messages
+            messages.sortedBy { it.id }.forEach { emit(it) }
         }
     }
 

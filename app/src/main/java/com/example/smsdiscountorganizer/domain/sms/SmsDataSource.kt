@@ -1,5 +1,8 @@
 package com.example.smsdiscountorganizer.domain.sms
 
+import kotlinx.coroutines.flow.Flow
+
 interface SmsDataSource {
-    suspend fun readInbox(after: SmsCursor? = null): List<SmsMessage>
+    /** Emits Inbox rows in ascending SMS ID order without materializing the Inbox. */
+    fun readInbox(after: SmsCursor? = null): Flow<SmsMessage>
 }

@@ -3,6 +3,7 @@ package com.example.smsdiscountorganizer.data.sms
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.provider.Telephony
 import com.example.smsdiscountorganizer.domain.sms.SmsDataSource
 import com.example.smsdiscountorganizer.domain.sms.SmsCursor
@@ -12,13 +13,17 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 
 @Singleton
 class AndroidSmsDataSource @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : SmsDataSource {
-    override suspend fun readInbox(after: SmsCursor?): List<SmsMessage> = withContext(Dispatchers.IO) {
+    override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
         checkReadPermission()
 
         val projection = arrayOf(
@@ -39,25 +44,34 @@ class AndroidSmsDataSource @Inject constructor(
             "${Telephony.Sms._ID} ASC",
         ) ?: throw SmsInboxUnavailableException()
 
-        cursor.use {
-            val idColumn = it.getColumnIndexOrThrow(Telephony.Sms._ID)
-            val addressColumn = it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
-            val bodyColumn = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
-            val dateColumn = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
-            buildList {
-                while (it.moveToNext()) {
-                    add(
-                        SmsMessage(
-                            id = it.getLong(idColumn),
-                            address = it.getString(addressColumn),
-                            body = it.getString(bodyColumn),
-                            dateMillis = it.getLong(dateColumn),
-                        ),
-                    )
-                }
+        cursor.use { rows ->
+            val idColumn = rows.getColumnIndexOrThrow(Telephony.Sms._ID)
+            val addressColumn = rows.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+            val bodyColumn = rows.getColumnIndexOrThrow(Telephony.Sms.BODY)
+            val dateColumn = rows.getColumnIndexOrThrow(Telephony.Sms.DATE)
+            while (rows.moveToNext()) {
+                currentCoroutineContext().ensureActive()
+                val id = rows.readSafely { getLong(idColumn) } ?: continue
+                if (id <= 0L) continue
+                val dateMillis = rows.readSafely { getLong(dateColumn) } ?: 0L
+                emit(
+                    SmsMessage(
+                        id = id,
+                        address = rows.readSafely { getString(addressColumn) },
+                        body = rows.readSafely { getString(bodyColumn) },
+                        dateMillis = dateMillis,
+                    ),
+                )
             }
         }
-    }
+    }.flowOn(Dispatchers.IO)
+
+    private inline fun <T> Cursor.readSafely(read: Cursor.() -> T): T? =
+        try {
+            read()
+        } catch (_: RuntimeException) {
+            null
+        }
 
     private fun checkReadPermission() {
         if (context.checkSelfPermission(Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {

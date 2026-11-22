@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.smsdiscountorganizer.domain.offer.OfferRepository
 import com.example.smsdiscountorganizer.domain.scan.ScanResult
+import com.example.smsdiscountorganizer.domain.scan.ScanProgress
 import com.example.smsdiscountorganizer.domain.scan.ScanSmsUseCase
 import com.example.smsdiscountorganizer.domain.settings.ThemeMode
 import com.example.smsdiscountorganizer.domain.settings.ThemeRepository
@@ -19,6 +20,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val isScanning: Boolean = false,
+    val progress: ScanProgress = ScanProgress(),
     val scanMessage: String? = null,
     val clearMessage: String? = null,
 )
@@ -38,6 +40,11 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(themeMode = mode) }
             }
         }
+        viewModelScope.launch {
+            scanSms.progress.collect { progress ->
+                _uiState.update { it.copy(isScanning = progress.isScanning, progress = progress) }
+            }
+        }
     }
 
     fun setTheme(mode: ThemeMode) {
@@ -53,6 +60,7 @@ class SettingsViewModel @Inject constructor(
                     is ScanResult.Success -> "بررسی تمام شد؛ ${result.offersUpserted} پیشنهاد ذخیره شد."
                     is ScanResult.Failure -> when (result.reason) {
                         ScanResult.Reason.InboxReadFailed -> "دسترسی به صندوق پیام‌ها ممکن نیست. مجوز را بررسی کنید."
+                        ScanResult.Reason.PermissionDenied -> "مجوز خواندن پیامک فعال نیست."
                         ScanResult.Reason.OfferExtractionFailed -> "پردازش پیشنهادها کامل نشد. دوباره تلاش کنید."
                         ScanResult.Reason.PersistenceFailed -> "ذخیره‌سازی محلی کامل نشد."
                     }

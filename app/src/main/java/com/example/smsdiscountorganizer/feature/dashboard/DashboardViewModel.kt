@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.smsdiscountorganizer.domain.offer.Offer
 import com.example.smsdiscountorganizer.domain.offer.OfferRepository
 import com.example.smsdiscountorganizer.domain.scan.ScanRepository
+import com.example.smsdiscountorganizer.domain.scan.ScanProgress
 import com.example.smsdiscountorganizer.domain.scan.ScanResult
 import com.example.smsdiscountorganizer.domain.scan.ScanSmsUseCase
 import com.example.smsdiscountorganizer.feature.offers.OfferStatus
@@ -31,6 +32,7 @@ data class DashboardUiState(
     val expiredCount: Int = 0,
     val lastScanAtMillis: Long? = null,
     val isScanning: Boolean = false,
+    val progress: ScanProgress = ScanProgress(),
     val message: String? = null,
     val readError: String? = null,
 )
@@ -48,7 +50,7 @@ class DashboardViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            combine(offerRepository.observeOffers(), scanRepository.observeScanState()) { offers, scan ->
+            combine(offerRepository.observeOffers(), scanRepository.observeScanState(), scanSms.progress) { offers, scan, progress ->
                 val now = clock.millis()
                 val statuses = offers.map { it.statusAt(now, zoneId) }
                 DashboardUiState(
@@ -59,6 +61,8 @@ class DashboardViewModel @Inject constructor(
                     expiringTodayCount = statuses.count { it == OfferStatus.EXPIRING_TODAY },
                     expiredCount = statuses.count { it == OfferStatus.EXPIRED },
                     lastScanAtMillis = scan?.lastSuccessfulScanAtMillis,
+                    isScanning = progress.isScanning,
+                    progress = progress,
                 )
             }.catch {
                 _uiState.update { it.copy(isLoading = false, message = "بارگذاری پیشنهادها ممکن نشد.") }
@@ -66,12 +70,12 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    fun scanNow() {
+    fun scanNow(fullRescan: Boolean = false) {
         if (_uiState.value.isScanning) return
         viewModelScope.launch {
             _uiState.update { it.copy(isScanning = true, message = null, readError = null) }
             try {
-                when (val result = scanSms.scan()) {
+                when (val result = scanSms.scan(fullRescan)) {
                     is ScanResult.Success -> _uiState.update {
                         it.copy(
                             isScanning = false,
@@ -95,6 +99,7 @@ class DashboardViewModel @Inject constructor(
 
 private fun ScanResult.Reason.toUserMessage(): String = when (this) {
     ScanResult.Reason.InboxReadFailed -> "دسترسی به صندوق پیام‌ها ممکن نیست. مجوز پیامک را بررسی کنید."
+    ScanResult.Reason.PermissionDenied -> "مجوز خواندن پیامک فعال نیست."
     ScanResult.Reason.OfferExtractionFailed -> "پردازش پیشنهادها کامل نشد. دوباره تلاش کنید."
     ScanResult.Reason.PersistenceFailed -> "ذخیره‌سازی محلی کامل نشد."
 }

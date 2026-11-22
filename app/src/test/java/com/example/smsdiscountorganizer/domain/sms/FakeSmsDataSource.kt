@@ -7,9 +7,13 @@ class FakeSmsDataSource(
     var readCount: Int = 0
         private set
 
-    override suspend fun readInbox(after: SmsCursor?): List<SmsMessage> {
-        readCount += 1
-        failure?.let { throw it }
-        return messages.filter { after == null || it.cursor > after }
-    }
+    override fun readInbox(after: SmsCursor?): kotlinx.coroutines.flow.Flow<SmsMessage> =
+        kotlinx.coroutines.flow.flow {
+            readCount += 1
+            failure?.let { throw it }
+            messages.asSequence()
+                .filter { after == null || it.cursor > after }
+                .sortedBy { it.id }
+                .forEach { emit(it) }
+        }
 }
