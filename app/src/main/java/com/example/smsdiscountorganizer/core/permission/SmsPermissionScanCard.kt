@@ -78,14 +78,10 @@ fun SmsPermissionScanCard(
                     onClick = { showExplanation = true },
                     enabled = activity != null,
                 ) { Text("توضیح و درخواست دسترسی") }
-                SmsPermissionStatus.PermanentlyDenied -> Button(
+                SmsPermissionStatus.DeniedOrRestricted -> Button(
                     onClick = { activity?.let(manager::openAppSettings) },
                     enabled = activity != null,
                 ) { Text("بازکردن تنظیمات برنامه") }
-                SmsPermissionStatus.InstallerRestricted -> Text(
-                    "این نصب از طرف Android برای دسترسی پیامک مجاز نشده است. برنامه این محدودیت را دور نمی‌زند.",
-                    color = MaterialTheme.colorScheme.error,
-                )
                 SmsPermissionStatus.Unknown -> Text("در حال بررسی وضعیت دسترسی…")
             }
         }
@@ -115,8 +111,7 @@ private fun permissionDescription(status: SmsPermissionStatus): String = when (s
     SmsPermissionStatus.Granted -> "دسترسی فقط‌خواندنی برای صندوق ورودی فعال است."
     SmsPermissionStatus.NotRequested -> "برای شروع اسکن محلی، دسترسی فقط‌خواندنی لازم است."
     SmsPermissionStatus.RationaleRequired -> "دسترسی قبلاً رد شده است؛ توضیح را ببینید و در صورت تمایل دوباره درخواست کنید."
-    SmsPermissionStatus.PermanentlyDenied -> "دسترسی رد شده است. می‌توانید آن را از تنظیمات برنامه فعال کنید."
-    SmsPermissionStatus.InstallerRestricted -> "نصب فعلی مجوز سخت‌محدودشده پیامک را دریافت نکرده است."
+    SmsPermissionStatus.DeniedOrRestricted -> "دسترسی داده نشده است. تنظیمات برنامه را بررسی کنید؛ Android ممکن است این مجوز را برای این نصب محدود کرده باشد. برنامه این محدودیت را دور نمی‌زند."
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {

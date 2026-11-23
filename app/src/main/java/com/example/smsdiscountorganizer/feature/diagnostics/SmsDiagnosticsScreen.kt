@@ -113,17 +113,12 @@ fun SmsDiagnosticsScreen(viewModel: SmsDiagnosticsViewModel) {
                 Text("Review permission")
             }
 
-            SmsPermissionStatus.PermanentlyDenied -> Button(
+            SmsPermissionStatus.DeniedOrRestricted -> Button(
                 onClick = { activity?.let(permissionManager::openAppSettings) },
                 enabled = activity != null,
             ) {
                 Text("Open app settings")
             }
-
-            SmsPermissionStatus.InstallerRestricted -> Text(
-                "This installation is not allowlisted for READ_SMS. Android blocks this hard-restricted permission; install through an authorized installer. The app cannot change this restriction.",
-                color = MaterialTheme.colorScheme.error,
-            )
 
             SmsPermissionStatus.Unknown -> Text("Checking permission status…")
         }
@@ -178,8 +173,7 @@ private fun SmsPermissionStatus.toDisplayText(): String = when (this) {
     SmsPermissionStatus.Granted -> "Granted"
     SmsPermissionStatus.NotRequested -> "Not requested"
     SmsPermissionStatus.RationaleRequired -> "Denied; an explanation is required before asking again"
-    SmsPermissionStatus.PermanentlyDenied -> "Denied; change this in app settings"
-    SmsPermissionStatus.InstallerRestricted -> "Blocked by Android installer restriction"
+    SmsPermissionStatus.DeniedOrRestricted -> "Not granted. Check app settings; Android may restrict this permission for this installation. The app cannot override that restriction."
 }
 
 private fun formatTimestamp(timestamp: java.time.Instant): String =

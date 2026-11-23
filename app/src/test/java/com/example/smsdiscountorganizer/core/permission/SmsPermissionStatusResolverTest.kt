@@ -5,27 +5,25 @@ import org.junit.Test
 
 class SmsPermissionStatusResolverTest {
     @Test
-    fun grantTakesPrecedenceOverOtherPermissionFlags() {
+    fun unrequestedPermissionIsShownAsNotRequested() {
         assertEquals(
-            SmsPermissionStatus.Granted,
+            SmsPermissionStatus.NotRequested,
             SmsPermissionStatusResolver.resolve(
-                isGranted = true,
-                isInstallerAllowlisted = false,
-                hasRequestedBefore = true,
+                isGranted = false,
+                hasRequestedBefore = false,
                 shouldShowRationale = false,
             ),
         )
     }
 
     @Test
-    fun reportsHardRestrictionWhenInstallerHasNotAllowlistedPermission() {
+    fun grantTakesPrecedenceOverOtherPermissionFlags() {
         assertEquals(
-            SmsPermissionStatus.InstallerRestricted,
+            SmsPermissionStatus.Granted,
             SmsPermissionStatusResolver.resolve(
-                isGranted = false,
-                isInstallerAllowlisted = false,
+                isGranted = true,
                 hasRequestedBefore = true,
-                shouldShowRationale = true,
+                shouldShowRationale = false,
             ),
         )
     }
@@ -36,7 +34,6 @@ class SmsPermissionStatusResolverTest {
             SmsPermissionStatus.RationaleRequired,
             SmsPermissionStatusResolver.resolve(
                 isGranted = false,
-                isInstallerAllowlisted = true,
                 hasRequestedBefore = true,
                 shouldShowRationale = true,
             ),
@@ -44,26 +41,12 @@ class SmsPermissionStatusResolverTest {
     }
 
     @Test
-    fun reportsSettingsRecoveryAfterPermanentDenial() {
+    fun reportsSettingsRecoveryWhenNoRationaleCanBeShown() {
         assertEquals(
-            SmsPermissionStatus.PermanentlyDenied,
+            SmsPermissionStatus.DeniedOrRestricted,
             SmsPermissionStatusResolver.resolve(
                 isGranted = false,
-                isInstallerAllowlisted = true,
                 hasRequestedBefore = true,
-                shouldShowRationale = false,
-            ),
-        )
-    }
-
-    @Test
-    fun newInstallStartsInNotRequestedState() {
-        assertEquals(
-            SmsPermissionStatus.NotRequested,
-            SmsPermissionStatusResolver.resolve(
-                isGranted = false,
-                isInstallerAllowlisted = true,
-                hasRequestedBefore = false,
                 shouldShowRationale = false,
             ),
         )

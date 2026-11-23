@@ -5,21 +5,18 @@ enum class SmsPermissionStatus {
     Granted,
     NotRequested,
     RationaleRequired,
-    PermanentlyDenied,
-    InstallerRestricted,
+    DeniedOrRestricted,
 }
 
 object SmsPermissionStatusResolver {
     fun resolve(
         isGranted: Boolean,
-        isInstallerAllowlisted: Boolean,
         hasRequestedBefore: Boolean,
         shouldShowRationale: Boolean,
     ): SmsPermissionStatus = when {
         isGranted -> SmsPermissionStatus.Granted
-        !isInstallerAllowlisted -> SmsPermissionStatus.InstallerRestricted
         shouldShowRationale -> SmsPermissionStatus.RationaleRequired
-        hasRequestedBefore -> SmsPermissionStatus.PermanentlyDenied
+        hasRequestedBefore -> SmsPermissionStatus.DeniedOrRestricted
         else -> SmsPermissionStatus.NotRequested
     }
 }

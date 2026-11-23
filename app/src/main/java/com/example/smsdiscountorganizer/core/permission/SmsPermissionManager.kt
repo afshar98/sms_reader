@@ -15,11 +15,9 @@ class SmsPermissionManager(context: Context) {
     fun status(activity: Activity): SmsPermissionStatus {
         val isGranted = appContext.checkSelfPermission(Manifest.permission.READ_SMS) ==
             PackageManager.PERMISSION_GRANTED
-        val isAllowlisted = isGranted || isReadSmsAllowlisted()
 
         return SmsPermissionStatusResolver.resolve(
             isGranted = isGranted,
-            isInstallerAllowlisted = isAllowlisted,
             hasRequestedBefore = preferences.getBoolean(KEY_HAS_REQUESTED, false),
             shouldShowRationale = activity.shouldShowRequestPermissionRationale(Manifest.permission.READ_SMS),
         )
@@ -37,21 +35,6 @@ class SmsPermissionManager(context: Context) {
             data = Uri.fromParts("package", appContext.packageName, null)
         }
         activity.startActivity(intent)
-    }
-
-    private fun isReadSmsAllowlisted(): Boolean {
-        val packageManager = appContext.packageManager
-        val flags = listOf(
-            PackageManager.FLAG_PERMISSION_WHITELIST_INSTALLER,
-            PackageManager.FLAG_PERMISSION_WHITELIST_SYSTEM,
-            PackageManager.FLAG_PERMISSION_WHITELIST_UPGRADE,
-        )
-        return flags.any { flag ->
-            Manifest.permission.READ_SMS in packageManager.getWhitelistedRestrictedPermissions(
-                appContext.packageName,
-                flag,
-            )
-        }
     }
 
     private companion object {

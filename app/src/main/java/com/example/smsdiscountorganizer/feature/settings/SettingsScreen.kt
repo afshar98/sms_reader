@@ -121,6 +121,5 @@ private fun SmsPermissionStatus.label(): String = when (this) {
     SmsPermissionStatus.Granted -> "فعال"
     SmsPermissionStatus.NotRequested -> "درخواست نشده"
     SmsPermissionStatus.RationaleRequired -> "رد شده؛ امکان درخواست دوباره هست"
-    SmsPermissionStatus.PermanentlyDenied -> "رد شده؛ از تنظیمات فعال کنید"
-    SmsPermissionStatus.InstallerRestricted -> "محدودشده توسط نصب‌کننده Android"
+    SmsPermissionStatus.DeniedOrRestricted -> "رد شده یا محدودشده؛ تنظیمات برنامه را بررسی کنید"
 }
