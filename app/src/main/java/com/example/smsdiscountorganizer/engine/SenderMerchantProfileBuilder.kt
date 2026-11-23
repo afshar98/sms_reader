@@ -15,6 +15,19 @@ class SenderMerchantProfileBuilder(
     private val supportingMessageCounts = linkedMapOf<String, Int>()
     private var lastSeenSmsId: Long? = null
 
+    /** Seeds an incremental rebuild from the persisted body-free aggregate. */
+    fun seed(profiles: List<SenderMerchantProfile>) {
+        require(evidence.isEmpty() && supportingMessageCounts.isEmpty() && lastSeenSmsId == null) {
+            "Profiles can only seed an empty builder"
+        }
+        profiles.forEach { profile ->
+            if (profile.merchantSupport.isNotEmpty()) {
+                evidence[profile.senderFingerprint] = profile.merchantSupport.toSortedMap().toMutableMap()
+                supportingMessageCounts[profile.senderFingerprint] = profile.totalSupportingMessages
+            }
+        }
+    }
+
     fun add(message: SmsMessage) {
         if (lastSeenSmsId == message.id) return
         lastSeenSmsId = message.id

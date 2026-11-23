@@ -71,9 +71,24 @@ class ScanSmsPipelineIntegrationTest {
         assertEquals(1, (second as ScanResult.Success).messagesScanned)
         assertEquals(listOf(1L, 2L), repository.offers.keys.sorted())
         assertEquals(
-            listOf(null, null, null, SmsCursor(message(1, "").dateMillis, 1L)),
+            listOf(null, null, SmsCursor(message(1, "").dateMillis, 1L), SmsCursor(message(1, "").dateMillis, 1L)),
             source.readAfter,
         )
+    }
+
+    @Test
+    fun newSenderEvidenceWithoutResolutionChangeDoesNotReprocessOldOffers() = runBlocking {
+        val source = FakeFlowSmsDataSource(listOf(message(1, "۲۰٪ تخفیف کد OLD20")))
+        val repository = InMemoryScanRepository()
+        val useCase = scanner(source, repository)
+        useCase.scan()
+        source.messages += message(2, "نام فروشگاه: اسنپ‌فود")
+
+        val result = useCase.scan() as ScanResult.Success
+
+        assertEquals(1, result.messagesScanned)
+        assertNull(repository.offers.getValue(1L).merchantName)
+        assertEquals(listOf(null, null, SmsCursor(message(1, "").dateMillis, 1L), SmsCursor(message(1, "").dateMillis, 1L)), source.readAfter)
     }
 
     @Test
@@ -254,6 +269,10 @@ class ScanSmsPipelineIntegrationTest {
         assertEquals(4, (changed as ScanResult.Success).messagesScanned)
         assertEquals("اسنپ‌فود", repository.offers.getValue(1L).merchantName)
         assertEquals(listOf(1L), repository.offers.keys.toList())
+        assertEquals(
+            listOf(null, null, SmsCursor(message(1, "").dateMillis, 1L), null),
+            source.readAfter,
+        )
     }
 
     @Test

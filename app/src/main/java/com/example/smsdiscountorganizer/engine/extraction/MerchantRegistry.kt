@@ -30,6 +30,15 @@ class MerchantRegistry(
     private val normalizer: PersianTextNormalizer = PersianTextNormalizer(),
 ) {
     private val definitions = definitions.toList()
+    private val normalizedAliases = this.definitions.associateWith { definition ->
+        (definition.aliases + definition.canonicalName).map { normalize(it) }.filter(String::isNotBlank).distinct()
+    }
+    private val aliasPatterns = this.definitions.associateWith { definition ->
+        normalizedAliases.getValue(definition).map(::wholeAliasPattern)
+    }
+    private val normalizedSenderAliases = this.definitions.associateWith { definition ->
+        definition.senderAliases.mapTo(hashSetOf()) { normalize(it) }
+    }
 
     init {
         require(this.definitions.map { normalize(it.canonicalName) }.distinct().size == this.definitions.size) {
@@ -49,9 +58,7 @@ class MerchantRegistry(
         val normalizedText = normalize(text)
         val bodyMatches = definitions.filter { definition ->
             definition.identityRole == MerchantIdentityRole.MERCHANT &&
-            (definition.aliases + definition.canonicalName).any { alias ->
-                containsWholeAlias(normalizedText, normalize(alias))
-            }
+            aliasPatterns.getValue(definition).any { it.containsMatchIn(normalizedText) }
         }
         if (bodyMatches.size == 1) return MerchantMatch(bodyMatches.single().canonicalName, MerchantEvidence.BODY_ALIAS)
         if (bodyMatches.size > 1) return null
@@ -60,7 +67,7 @@ class MerchantRegistry(
         if (sender in GENERIC_SENDERS) return null
         val senderMatches = definitions.filter { definition ->
             definition.identityRole == MerchantIdentityRole.MERCHANT &&
-                definition.senderAliases.any { normalize(it) == sender }
+                sender in normalizedSenderAliases.getValue(definition)
         }
         return senderMatches.singleOrNull()?.let {
             MerchantMatch(it.canonicalName, MerchantEvidence.SENDER_ID)
@@ -69,39 +76,38 @@ class MerchantRegistry(
 
     fun canonicalize(value: String): String {
         val normalized = normalize(value)
-        return definitions.firstOrNull { definition ->
-            (definition.aliases + definition.canonicalName).any { normalize(it) == normalized }
-        }?.canonicalName ?: value.trim()
+        return definitions.firstOrNull { definition -> normalized in normalizedAliases.getValue(definition) }
+            ?.canonicalName ?: value.trim()
     }
 
     /** Returns every locally registered brand explicitly named in the supplied message. */
     fun bodyMentions(text: String): Set<String> {
-        val normalizedText = normalize(text)
-        return matchingDefinitions(normalizedText, MerchantIdentityRole.MERCHANT)
-            .mapTo(linkedSetOf(), MerchantDefinition::canonicalName)
+        return bodyMentionsNormalized(normalize(text))
     }
+
+    internal fun bodyMentionsNormalized(normalizedText: String): Set<String> =
+        matchingDefinitions(normalizedText, MerchantIdentityRole.MERCHANT)
+            .mapTo(linkedSetOf(), MerchantDefinition::canonicalName)
 
     /** Registered brands are kept separate from merchants and sender profiles. */
     fun campaignBrandMentions(text: String): Set<String> =
-        matchingDefinitions(normalize(text), MerchantIdentityRole.CAMPAIGN_BRAND)
+        campaignBrandMentionsNormalized(normalize(text))
+
+    internal fun campaignBrandMentionsNormalized(normalizedText: String): Set<String> =
+        matchingDefinitions(normalizedText, MerchantIdentityRole.CAMPAIGN_BRAND)
             .mapTo(linkedSetOf(), MerchantDefinition::canonicalName)
 
     private fun matchingDefinitions(text: String, role: MerchantIdentityRole): List<MerchantDefinition> =
         definitions.filter { definition ->
             definition.identityRole == role &&
-                (definition.aliases + definition.canonicalName).any { alias ->
-                    containsWholeAlias(text, normalize(alias))
-                }
+                aliasPatterns.getValue(definition).any { it.containsMatchIn(text) }
         }
 
     private fun normalize(value: String): String =
         normalizer.normalize(value).lowercase(Locale.ROOT).replace(WHITESPACE, " ").trim()
 
-    private fun containsWholeAlias(text: String, alias: String): Boolean {
-        if (alias.isBlank()) return false
-        val pattern = Regex("(?<![\\p{L}\\p{N}\\u200C])${Regex.escape(alias)}(?![\\p{L}\\p{N}\\u200C])")
-        return pattern.containsMatchIn(text)
-    }
+    private fun wholeAliasPattern(alias: String): Regex =
+        Regex("(?<![\\p{L}\\p{N}\\u200C])${Regex.escape(alias)}(?![\\p{L}\\p{N}\\u200C])")
 
     private fun String?.cleanMerchant(): String? = this?.trim()?.takeIf {
         it.isNotEmpty() && it.length <= MAX_MERCHANT_LENGTH && it !in GENERIC_LABELS

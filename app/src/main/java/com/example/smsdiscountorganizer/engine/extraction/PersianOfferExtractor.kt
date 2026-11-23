@@ -28,10 +28,10 @@ class PersianOfferExtractor(
     override fun extract(message: SmsMessage, senderProfile: SenderMerchantProfile?): OfferMetadata? {
         val originalBody = message.body ?: return null
         val body = textNormalizer.normalize(originalBody)
-        val classification = classifier.classify(body)
+        val classification = classifier.classifyNormalized(body)
         if (classification.category != ClassificationCategory.DISCOUNT) return null
 
-        val merchantName = when (val current = merchantExtractor.resolveCurrent(body)) {
+        val merchantName = when (val current = merchantExtractor.resolveCurrentNormalized(body)) {
             is CurrentMerchantEvidence.Identified -> current.merchantName
             CurrentMerchantEvidence.Ambiguous -> null
             CurrentMerchantEvidence.None -> when {
@@ -40,7 +40,7 @@ class PersianOfferExtractor(
             }
         }
 
-        val discountValues = discountValueExtractor.extract(body)
+        val discountValues = discountValueExtractor.extractNormalized(body)
         val expirationText = EXPIRATION_CONTEXT.find(body)?.let { body.substring(it.range.first) } ?: body
         val expiration = expirationResolver.resolve(expirationText, message.dateMillis)
             as? ExpirationResolution.Resolved
@@ -56,12 +56,12 @@ class PersianOfferExtractor(
             fixedDiscounts = discountValues.fixedDiscounts,
             freeShipping = freeShipping,
             couponCode = couponCodeExtractor.extract(originalBody),
-            minimumPurchase = purchaseConditionExtractor.extractMinimumPurchase(body),
-            productCategory = productCategoryExtractor.extract(body),
+            minimumPurchase = purchaseConditionExtractor.extractMinimumPurchaseNormalized(body),
+            productCategory = productCategoryExtractor.extractNormalized(body),
             confidence = classification.confidence,
             validUntilMillis = expiration?.expiresAt?.toEpochMilli(),
-            applicableCategories = productCategoryExtractor.extractAll(body),
-            campaignBrand = merchantExtractor.resolveCampaignBrand(body),
+            applicableCategories = productCategoryExtractor.extractAllNormalized(body),
+            campaignBrand = merchantExtractor.resolveCampaignBrandNormalized(body),
         )
     }
 

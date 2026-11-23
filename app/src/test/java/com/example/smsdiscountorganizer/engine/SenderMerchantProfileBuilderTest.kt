@@ -49,6 +49,25 @@ class SenderMerchantProfileBuilderTest {
     }
 
     @Test
+    fun seededProfilesAndNewMessagesProduceSameProfileAsFullBuild() {
+        val initialMessages = listOf(
+            message(1, "SHOP", "فروشگاه دیجی‌کالا"),
+            message(2, "SHOP", "کد تخفیف دیجی کالا"),
+        )
+        val fullBuilder = SenderMerchantProfileBuilder().apply { initialMessages.forEach(::add) }
+        val incrementalBuilder = SenderMerchantProfileBuilder().apply {
+            seed(fullBuilder.build())
+            add(message(3, "SHOP", "پیشنهاد ویژه دیجی‌کالا"))
+        }
+        val expected = SenderMerchantProfileBuilder().apply {
+            (initialMessages + message(3, "SHOP", "پیشنهاد ویژه دیجی‌کالا")).forEach(::add)
+        }
+
+        assertEquals(expected.build(), incrementalBuilder.build())
+        assertEquals(expected.fingerprint(), incrementalBuilder.fingerprint())
+    }
+
+    @Test
     fun conflictingNamesRemainUnknownAndSharedGatewaysAreMarked() {
         val builder = SenderMerchantProfileBuilder()
         repeat(3) { builder.add(message(it.toLong(), "GATEWAY-1", "فروشگاه دیجی‌کالا")) }

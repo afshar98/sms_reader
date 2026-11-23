@@ -23,8 +23,9 @@ class DiscountValueExtractor(
         Regex("تخفیف\\s*($NUMBER)\\s*(هزار|میلیون)?\\s*(تومان|تومن|ریال)(?:ی)?"),
     )
 
-    fun extract(text: String): DiscountValues {
-        val normalized = normalizer.normalize(text)
+    fun extract(text: String): DiscountValues = extractNormalized(normalizer.normalize(text))
+
+    internal fun extractNormalized(normalized: String): DiscountValues {
         val excludedRanges = purchaseConditionExtractor.minimumAmountRanges(normalized)
         val percentageMatches = percentagePatterns.flatMap { pattern ->
             pattern.findAll(normalized).filterNot { match -> excludedRanges.any { it.overlaps(match.range) } }.toList()

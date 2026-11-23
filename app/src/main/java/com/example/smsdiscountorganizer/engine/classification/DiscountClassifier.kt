@@ -12,7 +12,11 @@ class DiscountClassifier(
     private val productCategoryExtractor = ProductCategoryExtractor(normalizer)
 
     fun classify(message: String): ClassificationResult {
-        val normalizedText = normalizer.normalize(message).lowercase(Locale.ROOT)
+        return classifyNormalized(normalizer.normalize(message))
+    }
+
+    internal fun classifyNormalized(normalizedMessage: String): ClassificationResult {
+        val normalizedText = normalizedMessage.lowercase(Locale.ROOT)
         val contextualCampaignMatches = contextualCampaignDiscountRule.matches(normalizedText)
         val matchingRules = (ruleRegistry.matchingRules(normalizedText) + listOfNotNull(
             implicitPercentageRule.takeIf { it.matches(normalizedText) },
@@ -105,7 +109,7 @@ class DiscountClassifier(
 
         override fun matches(normalizedText: String): Boolean =
             !PERCENTAGE_METRIC_CONTEXT.containsMatchIn(normalizedText) &&
-                productCategoryExtractor.hasProductNearPercentage(normalizedText)
+                productCategoryExtractor.hasProductNearPercentageNormalized(normalizedText)
     }
 
     private val contextualCampaignDiscountRule = object : ClassificationRule {
@@ -117,11 +121,11 @@ class DiscountClassifier(
 
         override fun matches(normalizedText: String): Boolean {
             val hasCampaign = CAMPAIGN_TERMS.any(normalizedText::contains)
-            val hasProduct = productCategoryExtractor.extractAll(normalizedText).any {
+            val hasProduct = productCategoryExtractor.extractAllNormalized(normalizedText).any {
                 it != OfferCategory.GENERAL && it != OfferCategory.UNKNOWN
             }
             val hasPurchaseOrProductPercentage = PURCHASE_CONTEXT.containsMatchIn(normalizedText) ||
-                productCategoryExtractor.hasProductNearPercentage(normalizedText)
+                productCategoryExtractor.hasProductNearPercentageNormalized(normalizedText)
             return hasCampaign && hasProduct && hasPurchaseOrProductPercentage
         }
     }

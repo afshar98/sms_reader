@@ -25,8 +25,17 @@ class ProductCategoryExtractor(
     )
     private val generalTerms = listOf("همه محصولات", "تمام محصولات", "همه کالاها", "تمام کالاها", "برای همه خریدها")
 
-    fun extractAll(text: String): List<OfferCategory> {
-        val normalized = normalizer.normalize(text).lowercase(Locale.ROOT)
+    private val termPatterns: Map<String, Regex> =
+        (terms.values.flatten() + parentTerms.values.flatten() + generalTerms).distinct().associateWith { term ->
+            val normalizedTerm = normalizer.normalize(term).lowercase(Locale.ROOT).replace(WHITESPACE, " ").trim()
+            val termPattern = normalizedTerm.split(' ').joinToString("[\\s\\u200C]+") { Regex.escape(it) }
+            Regex("(?<![\\p{L}\\p{N}\\u200C])$termPattern(?![\\p{L}\\p{N}\\u200C])")
+        }
+
+    fun extractAll(text: String): List<OfferCategory> = extractAllNormalized(normalizer.normalize(text))
+
+    internal fun extractAllNormalized(normalizedText: String): List<OfferCategory> {
+        val normalized = normalizedText.lowercase(Locale.ROOT)
         val leafMatches = terms.filterValues { words -> words.any { term -> containsTerm(normalized, term) } }.keys
         val parentMatches = parentTerms.filterValues { words -> words.any { term -> containsTerm(normalized, term) } }.keys
         val matches = (leafMatches + parentMatches).filterNot { candidate ->
@@ -44,8 +53,10 @@ class ProductCategoryExtractor(
     }
 
     /** True when a percentage occurs close to a recognized product or service term. */
-    fun hasProductNearPercentage(text: String, maxDistance: Int = 30): Boolean {
-        val normalized = normalizer.normalize(text)
+    fun hasProductNearPercentage(text: String, maxDistance: Int = 30): Boolean =
+        hasProductNearPercentageNormalized(normalizer.normalize(text), maxDistance)
+
+    internal fun hasProductNearPercentageNormalized(normalized: String, maxDistance: Int = 30): Boolean {
         val percentages = PERCENTAGE.findAll(normalized).toList()
         if (percentages.isEmpty()) return false
         val productTerms = terms.values.flatten()
@@ -64,18 +75,16 @@ class ProductCategoryExtractor(
     }
 
     /** Compatibility projection for older call sites and stored ProductCategory values. */
-    fun extract(text: String): ProductCategory? = extractAll(text).singleOrNull()?.let { category ->
+    fun extract(text: String): ProductCategory? = extractNormalized(normalizer.normalize(text))
+
+    internal fun extractNormalized(normalizedText: String): ProductCategory? = extractAllNormalized(normalizedText).singleOrNull()?.let { category ->
         ProductCategory.entries.firstOrNull { it.name.equals(category.stableId, ignoreCase = true) }
     }
 
-    private fun containsTerm(text: String, term: String): Boolean {
-        return wholeTermMatches(text, term).isNotEmpty()
-    }
+    private fun containsTerm(text: String, term: String): Boolean = termPatterns.getValue(term).containsMatchIn(text)
 
     private fun wholeTermMatches(text: String, term: String): List<IntRange> {
-        val normalizedTerm = normalizer.normalize(term).lowercase(Locale.ROOT).replace(WHITESPACE, " ").trim()
-        val termPattern = normalizedTerm.split(' ').joinToString("[\\s\\u200C]+") { Regex.escape(it) }
-        return Regex("(?<![\\p{L}\\p{N}\\u200C])$termPattern(?![\\p{L}\\p{N}\\u200C])")
+        return termPatterns.getValue(term)
             .findAll(text.lowercase(Locale.ROOT))
             .map(MatchResult::range)
             .toList()

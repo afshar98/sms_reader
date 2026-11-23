@@ -12,7 +12,10 @@ class PurchaseConditionExtractor(
     )
 
     fun extractMinimumPurchase(text: String): MonetaryAmount? {
-        val normalized = normalizer.normalize(text)
+        return extractMinimumPurchaseNormalized(normalizer.normalize(text))
+    }
+
+    internal fun extractMinimumPurchaseNormalized(normalized: String): MonetaryAmount? {
         val match = minimumPattern.find(normalized) ?: return null
         return AmountParser.parse(match.groupValues[1], match.groupValues[2].ifBlank { null }, match.groupValues[3])
     }

@@ -66,11 +66,25 @@ class ScanSmsUseCase @Inject constructor(
         val storedCursor = storedState?.cursor
         val lastSuccessfulScanAt = storedState?.lastSuccessfulScanAtMillis ?: 0L
         val profileBuilder = SenderMerchantProfileBuilder()
+        val hasPersistedProfileSnapshot = storedState?.senderProfileFingerprint?.isNotBlank() == true
+        val previousProfiles = if (!fullRescan && storedCursor != null && hasPersistedProfileSnapshot) {
+            try {
+                scanRepository.getSenderProfiles()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return fail(ScanResult.Reason.PersistenceFailed)
+            }
+        } else {
+            emptyList()
+        }
+        val canBuildProfilesIncrementally = !fullRescan && storedCursor != null && hasPersistedProfileSnapshot
+        if (canBuildProfilesIncrementally) profileBuilder.seed(previousProfiles)
         var profiledMessages = 0
         _progress.value = _progress.value.copy(phase = ScanPhase.PROFILING)
         try {
             withContext(Dispatchers.Default) {
-                smsDataSource.readInbox(after = null).collect { message ->
+                smsDataSource.readInbox(after = storedCursor.takeIf { canBuildProfilesIncrementally }).collect { message ->
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     profiledMessages += 1
                     try {
@@ -95,7 +109,7 @@ class ScanSmsUseCase @Inject constructor(
         _progress.value = _progress.value.copy(profiledMessages = profiledMessages)
 
         val senderProfiles = profileBuilder.build()
-        val profileFingerprint = profileBuilder.fingerprint()
+        val profileFingerprint = SenderMerchantProfileBuilder.profileFingerprint(senderProfiles)
         val previousOfferProfileFingerprint = storedState?.offersSenderProfileFingerprint.orEmpty()
         val profilesChanged = storedState?.senderProfileFingerprint != profileFingerprint
         if (profilesChanged) {
@@ -107,7 +121,13 @@ class ScanSmsUseCase @Inject constructor(
                 return fail(ScanResult.Reason.PersistenceFailed)
             }
         }
-        val reprocessAll = fullRescan || profilesChanged || previousOfferProfileFingerprint != profileFingerprint
+        val profileResolutionChanged =
+            profileResolutionSignature(previousProfiles) != profileResolutionSignature(senderProfiles)
+        val profileSnapshotMissing = storedState != null && !hasPersistedProfileSnapshot
+        val offersWereProcessedAgainstStaleProfiles = storedState != null &&
+            previousOfferProfileFingerprint != storedState.senderProfileFingerprint
+        val reprocessAll = fullRescan || storedState == null || profileSnapshotMissing ||
+            profileResolutionChanged || offersWereProcessedAgainstStaleProfiles
         if (reprocessAll && previousOfferProfileFingerprint == profileFingerprint) {
             try {
                 scanRepository.commitScan(
@@ -133,12 +153,18 @@ class ScanSmsUseCase @Inject constructor(
         var offersFound = 0
         var malformedMessages = 0
         var batchMessageCount = 0
+        var lastProgressUpdateNanos = 0L
         val extractedAtMillis = clock.millis()
         val batchOffers = ArrayList<Offer>(SCAN_BATCH_SIZE)
 
         suspend fun saveBatch() {
             if (batchMessageCount == 0) return
-            _progress.value = _progress.value.copy(phase = ScanPhase.SAVING)
+            _progress.value = _progress.value.copy(
+                phase = ScanPhase.SAVING,
+                processedMessages = processedMessages,
+                offersFound = offersFound,
+                malformedMessages = malformedMessages,
+            )
             val checkpointCursor = if (fullRescan) storedCursor else lastCursor
             try {
                 scanRepository.commitScan(
@@ -191,12 +217,19 @@ class ScanSmsUseCase @Inject constructor(
                         }
                     }
 
-                    _progress.value = _progress.value.copy(
-                        phase = ScanPhase.PROCESSING,
-                        processedMessages = processedMessages,
-                        offersFound = offersFound,
-                        malformedMessages = malformedMessages,
-                    )
+                    val nowNanos = System.nanoTime()
+                    if (processedMessages == 1 ||
+                        processedMessages % PROGRESS_MESSAGE_INTERVAL == 0 ||
+                        nowNanos - lastProgressUpdateNanos >= PROGRESS_TIME_INTERVAL_NANOS
+                    ) {
+                        _progress.value = _progress.value.copy(
+                            phase = ScanPhase.PROCESSING,
+                            processedMessages = processedMessages,
+                            offersFound = offersFound,
+                            malformedMessages = malformedMessages,
+                        )
+                        lastProgressUpdateNanos = nowNanos
+                    }
                     if (batchMessageCount >= SCAN_BATCH_SIZE) saveBatch()
                 }
             }
@@ -242,6 +275,15 @@ class ScanSmsUseCase @Inject constructor(
         return ScanResult.Failure(reason)
     }
 
+    /** Offers depend on the resolved merchant name; evidence count/confidence changes alone do not alter them. */
+    private fun profileResolutionSignature(
+        profiles: List<SenderMerchantProfile>,
+    ): List<Pair<String, String?>> =
+        profiles.asSequence()
+            .mapNotNull { profile -> profile.resolvedMerchantName?.let { profile.senderFingerprint to it } }
+            .sortedBy { it.first }
+            .toList()
+
     private fun SmsMessage.toOffer(
         metadata: com.example.smsdiscountorganizer.domain.offer.OfferMetadata,
         extractedAtMillis: Long,
@@ -268,3 +310,5 @@ class ScanSmsUseCase @Inject constructor(
 }
 
 internal const val SCAN_BATCH_SIZE = 50
+private const val PROGRESS_MESSAGE_INTERVAL = 100
+private const val PROGRESS_TIME_INTERVAL_NANOS = 150_000_000L

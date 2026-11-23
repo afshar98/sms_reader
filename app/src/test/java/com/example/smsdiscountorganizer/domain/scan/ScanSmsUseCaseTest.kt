@@ -47,7 +47,7 @@ class ScanSmsUseCaseTest {
         assertEquals(listOf(10L, 11L, 12L), offers.offers.keys.sorted())
         assertEquals(SmsCursor(50L, 12L), scans.state?.cursor)
         assertEquals(
-            listOf(null, null, null, SmsCursor(50L, 12L)),
+            listOf(null, null, SmsCursor(50L, 12L), SmsCursor(50L, 12L)),
             source.cursors,
         )
         assertEquals(10L, offers.offers.getValue(10L).sourceSmsId)
