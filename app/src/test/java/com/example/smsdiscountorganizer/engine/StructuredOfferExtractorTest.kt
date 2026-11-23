@@ -8,6 +8,7 @@ import com.example.smsdiscountorganizer.domain.sms.SmsMessage
 import com.example.smsdiscountorganizer.engine.extraction.CouponCodeExtractor
 import com.example.smsdiscountorganizer.engine.extraction.DiscountValueExtractor
 import com.example.smsdiscountorganizer.engine.extraction.PersianOfferExtractor
+import com.example.smsdiscountorganizer.engine.extraction.ProductCategoryExtractor
 import com.example.smsdiscountorganizer.engine.extraction.PurchaseConditionExtractor
 import com.example.smsdiscountorganizer.engine.expiration.PersianDateResolver
 import java.time.Clock
@@ -98,6 +99,12 @@ class StructuredOfferExtractorDetailTest {
     }
 
     @Test
+    fun extractsLowercaseCouponAfterStandaloneCodeLabelOnAnotherLine() {
+        assertEquals("xyzp", CouponCodeExtractor().extract("کد تخفیف تپسی‌مارکت\nکد: xyzp"))
+        assertEquals("AbC123", CouponCodeExtractor().extract("کد تخفیف شما: AbC123"))
+    }
+
+    @Test
     fun doesNotExtractOtpAsCouponCode() {
         assertNull(CouponCodeExtractor().extract("رمز پویا 839204 برای ورود؛ کد تخفیف بعدا ارسال می‌شود"))
         assertNull(extractor.extract(message("رمز یکبار مصرف 839204؛ برای خرید تخفیف هم دارید")))
@@ -154,6 +161,17 @@ class StructuredOfferExtractorDetailTest {
     fun extractsFoodAndGroceryCategoriesWithoutSubstringCollision() {
         assertEquals(ProductCategory.Grocery, extract("جشنواره فروش مواد غذایی").productCategory)
         assertEquals(ProductCategory.Food, extract("تخفیف غذای رستوران").productCategory)
+    }
+
+    @Test
+    fun mapsProductTermsToMultipleSpecificCategoriesAndTapsiMarketToGrocery() {
+        val extractor = ProductCategoryExtractor()
+
+        assertEquals(
+            listOf(com.example.smsdiscountorganizer.domain.offer.OfferCategory.Electronics, com.example.smsdiscountorganizer.domain.offer.OfferCategory.Jewelry),
+            extractor.extractAll("هندزفری و پلاک طلا"),
+        )
+        assertEquals(ProductCategory.Grocery, extractor.extract("تپسی‌مارکت"))
     }
 
     @Test

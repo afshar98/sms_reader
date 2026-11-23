@@ -12,6 +12,7 @@ class RelativeDateParser(
 ) {
     private val hoursPattern = Regex("(?<![0-9])([0-9]{1,3})\\s*ساعت\\s*(?:آینده|بعد)")
     private val dayAfterTomorrow = Regex("پس[‌\\s]?فردا")
+    private val tonightExpiration = Regex("(?:تا\\s*(?:پایان\\s*)?امشب|مهلت.{0,12}امشب|اعتبار.{0,12}امشب)")
 
     fun parse(text: String, receivedAtMillis: Long?): ExpirationResolution? {
         val normalized = normalizer.normalize(text)
@@ -19,6 +20,7 @@ class RelativeDateParser(
         val isDayAfterTomorrow = normalized.contains("پس فردا") || dayAfterTomorrow.containsMatchIn(normalized)
         val relativeKinds = buildList {
             if (hours != null) add(RelativeKind.Duration(hours))
+            if (tonightExpiration.containsMatchIn(normalized)) add(RelativeKind.Days(0))
             if (isDayAfterTomorrow) add(RelativeKind.Days(2))
             else if (normalized.contains("فردا")) add(RelativeKind.Days(1))
             if (normalized.contains("امروز")) add(RelativeKind.Days(0))

@@ -36,7 +36,7 @@ interface AppPreferenceDao {
 
 @Database(
     entities = [AppPreferenceEntity::class, OfferEntity::class, ScanStateEntity::class, SenderMerchantProfileEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters(OfferConverters::class)
@@ -160,6 +160,12 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS index_sender_merchant_profiles_senderFingerprint " +
                         "ON sender_merchant_profiles (senderFingerprint)",
                 )
+            }
+        }
+
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE offers ADD COLUMN campaignBrand TEXT")
             }
         }
     }

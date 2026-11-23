@@ -75,6 +75,9 @@ fun DetailsScreen(
                     correction = item.merchantCorrection,
                     onSave = viewModel::saveMerchantCorrection,
                 )
+                item.campaignBrand?.let { brand ->
+                    DetailCard("برند کمپین") { Text(brand, style = MaterialTheme.typography.titleLarge) }
+                }
                 DetailCard("میزان تخفیف") {
                     item.percentageDiscounts?.forEach { Text("${it}% تخفیف درصدی") }
                     item.fixedDiscounts?.forEach { Text("${it.amount} ${it.currency.label()} تخفیف") }

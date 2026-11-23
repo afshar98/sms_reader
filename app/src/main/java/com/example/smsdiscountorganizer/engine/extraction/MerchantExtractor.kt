@@ -4,11 +4,21 @@ class MerchantExtractor(
     private val registry: MerchantRegistry = MerchantRegistry(),
 ) {
     private val labeledPattern = Regex(
-        "(?:نام\\s*(?:فروشگاه|برند)|فروشگاه|برند)(?![\\p{L}\\p{N}])\\s*[:：]?\\s*([^؛;،,\\n.!؟]+)",
+        "(?:نام\\s*فروشگاه|فروشگاه)(?![\\p{L}\\p{N}])\\s*[:：]?\\s*([^؛;،,\\n.!؟]+)",
     )
-    private val stopWords = listOf("کد تخفیف", "تخفیف", "ارسال رایگان", "عنوان پیشنهاد", "جشنواره", "حراج")
+    private val campaignBrandPattern = Regex(
+        "(?:نام\\s*برند|برند)(?![\\p{L}\\p{N}])\\s*[:：]?\\s*([^؛;،,\\n.!؟]+)",
+    )
+    private val stopWords = listOf("کد تخفیف", "تخفیف", "ارسال رایگان", "عنوان پیشنهاد", "جشنواره", "حراج", "برند")
 
     fun extract(text: String): String? = resolve(text)?.merchantName
+
+    fun resolveCampaignBrand(text: String): String? {
+        val labeled = campaignBrandPattern.findAll(text)
+            .mapNotNull { it.groupValues.getOrNull(1)?.let(::cleanLabel)?.let(registry::canonicalize) }
+            .toSet()
+        return (labeled + registry.campaignBrandMentions(text)).singleOrNull()
+    }
 
     fun resolve(
         text: String,

@@ -93,6 +93,30 @@ class ScanSmsPipelineIntegrationTest {
     }
 
     @Test
+    fun fullRescanReprocessesPreviouslyRejectedMessagesWithoutDuplicatingOffers() = runBlocking {
+        val source = FakeFlowSmsDataSource(
+            listOf(
+                message(31, "کد تخفیف تپسی‌مارکت تا امشب اعتبار داره! کد: xyzp"),
+                message(32, "هندزفری و پلاک طلا ۸۰٪؛ ۱۲ظهر، قسطی‌جمعه دیجی‌پی"),
+            ),
+        )
+        val repository = InMemoryScanRepository()
+
+        val oldRulesResult = scanner(source, repository, OfferExtractor { null }).scan()
+        assertEquals(0, (oldRulesResult as ScanResult.Success).offersUpserted)
+        assertTrue(repository.offers.isEmpty())
+
+        val rescanned = scanner(source, repository).scan(fullRescan = true) as ScanResult.Success
+        val repeated = scanner(source, repository).scan(fullRescan = true) as ScanResult.Success
+
+        assertEquals(2, rescanned.offersUpserted)
+        assertEquals(2, repeated.offersUpserted)
+        assertEquals(listOf(31L, 32L), repository.offers.keys.sorted())
+        assertEquals("دیجی‌پی", repository.offers.getValue(32L).campaignBrand)
+        assertNull(repository.offers.getValue(32L).merchantName)
+    }
+
+    @Test
     fun emptyInboxCompletesAndUpdatesLastSuccessfulScan() = runBlocking {
         val repository = InMemoryScanRepository()
 

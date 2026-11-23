@@ -62,6 +62,7 @@ class AppDatabaseTest {
             extractionConfidence = 0.87,
             applicableCategories = listOf(OfferCategory.Electronics, OfferCategory.Beauty),
             merchantCorrection = "بازار مهر",
+            campaignBrand = "دیجی‌پی",
         )
 
         database.offerDao().upsertAll(listOf(structured))
@@ -136,6 +137,7 @@ class AppDatabaseTest {
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,
                 AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()
@@ -185,7 +187,7 @@ class AppDatabaseTest {
         }
 
         database = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
         val migrated = database.offerDao().observeAll().first().single()
@@ -239,13 +241,14 @@ class AppDatabaseTest {
         }
 
         database = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
 
         val migrated = database.offerDao().observeAll().first().single()
         assertEquals(listOf(OfferCategory.Electronics), migrated.applicableCategories)
         assertEquals(null, migrated.merchantCorrection)
+        assertEquals(null, migrated.campaignBrand)
         database.close()
         context.deleteDatabase(name)
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)

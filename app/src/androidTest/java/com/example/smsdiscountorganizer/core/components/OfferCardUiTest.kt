@@ -49,4 +49,33 @@ class OfferCardUiTest {
         composeRule.onNode(hasClickAction()).performClick()
         assertTrue(clicked.get())
     }
+
+    @Test
+    fun couponOnlyOfferShowsCouponLabelWithoutInventingAPercentage() {
+        val offer = Offer(
+            sourceSmsId = 18,
+            title = null,
+            merchantName = "تپسی‌مارکت",
+            discountCode = "xyzp",
+            discountValue = null,
+            percentageDiscounts = null,
+            fixedDiscounts = null,
+            freeShipping = null,
+            minimumPurchase = null,
+            productCategory = null,
+            extractionConfidence = 0.9,
+            validUntilMillis = null,
+            sourceDateMillis = 1_700_000_000_000,
+            extractedAtMillis = 1_700_000_000_000,
+        )
+        composeRule.setContent {
+            OrganizerTheme {
+                OfferCard(offer, 1_700_000_000_000, ZoneId.of("Asia/Tehran"), onClick = {})
+            }
+        }
+
+        composeRule.onNodeWithText("کد تخفیف").assertIsDisplayed()
+        composeRule.onNodeWithText("کد تخفیف: xyzp").assertIsDisplayed()
+        composeRule.onNodeWithText("بدون مهلت مشخص").assertIsDisplayed()
+    }
 }

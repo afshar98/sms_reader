@@ -47,8 +47,13 @@ fun OfferCard(
                 )
                 Text(statusLabel(offer.statusAt(nowMillis, zoneId)), style = MaterialTheme.typography.labelMedium)
             }
-            Text(offer.title ?: offer.discountValue ?: "پیشنهاد تخفیف", style = MaterialTheme.typography.titleLarge)
+            offer.campaignBrand?.let { Text("برند کمپین: $it", style = MaterialTheme.typography.bodySmall) }
+            Text(
+                offer.title ?: offer.discountValue ?: if (offer.discountCode != null) "کد تخفیف" else "پیشنهاد تخفیف",
+                style = MaterialTheme.typography.titleLarge,
+            )
             offer.discountValue?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+            offer.discountCode?.let { Text("کد تخفیف: $it", style = MaterialTheme.typography.bodyMedium) }
             offer.fixedDiscounts?.joinToString("، ") { "${it.amount} ${it.currency.toPersian()}" }
                 ?.takeIf(String::isNotBlank)
                 ?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }

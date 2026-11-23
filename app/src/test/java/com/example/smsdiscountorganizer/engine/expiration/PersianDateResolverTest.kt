@@ -100,6 +100,18 @@ class PersianDateResolverTest {
     }
 
     @Test
+    fun tonightUsesEndOfReceivedLocalDayButAnEventTonightIsNotAnExpiration() {
+        val received = receivedAt("2025-03-20T10:00:00Z")
+        val tonight = resolver.resolve("کد تخفیف تا امشب اعتبار دارد", received)
+
+        assertResolvedDate(tonight, LocalDate.of(2025, 3, 20))
+        assertEquals(
+            UnresolvedDateReason.NO_EXPIRATION,
+            (resolver.resolve("فروش ویژه امشب", received) as ExpirationResolution.Unresolved).reason,
+        )
+    }
+
+    @Test
     fun resolvesEndOfWeekAsFridayInSaturdayFirstWeek() {
         val saturday = receivedAt("2025-03-22T08:00:00Z") // Saturday in Tehran.
         val friday = receivedAt("2025-03-28T08:00:00Z") // Friday in Tehran.

@@ -61,6 +61,7 @@ internal fun OfferEntity.toDomain(): Offer = Offer(
     extractedAtMillis = extractedAtMillis,
     applicableCategories = applicableCategories,
     merchantCorrection = merchantCorrection,
+    campaignBrand = campaignBrand,
 )
 
 internal fun Offer.toEntity(): OfferEntity = OfferEntity(
@@ -80,4 +81,5 @@ internal fun Offer.toEntity(): OfferEntity = OfferEntity(
     extractedAtMillis = extractedAtMillis,
     applicableCategories = applicableCategories,
     merchantCorrection = merchantCorrection,
+    campaignBrand = campaignBrand,
 )

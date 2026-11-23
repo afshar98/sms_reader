@@ -31,4 +31,5 @@ data class OfferEntity(
     @ColumnInfo(defaultValue = "''")
     val applicableCategories: List<OfferCategory> = productCategory?.let { OfferCategory.fromLegacy(it) }?.let(::listOf).orEmpty(),
     val merchantCorrection: String? = null,
+    val campaignBrand: String? = null,
 )

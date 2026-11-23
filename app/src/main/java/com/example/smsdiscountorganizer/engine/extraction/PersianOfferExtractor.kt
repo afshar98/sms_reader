@@ -61,6 +61,7 @@ class PersianOfferExtractor(
             confidence = classification.confidence,
             validUntilMillis = expiration?.expiresAt?.toEpochMilli(),
             applicableCategories = productCategoryExtractor.extractAll(body),
+            campaignBrand = merchantExtractor.resolveCampaignBrand(body),
         )
     }
 

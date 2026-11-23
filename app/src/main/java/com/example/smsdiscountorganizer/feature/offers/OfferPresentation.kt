@@ -37,6 +37,7 @@ fun filterOffers(
         normalizedQuery.isEmpty() || listOfNotNull(
             offer.title,
             offer.effectiveMerchantName,
+            offer.campaignBrand,
             offer.discountCode,
             offer.discountValue,
         ).any { it.contains(normalizedQuery, ignoreCase = true) }

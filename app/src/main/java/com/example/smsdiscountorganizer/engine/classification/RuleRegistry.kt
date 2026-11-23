@@ -175,6 +175,16 @@ class RuleRegistry(rules: List<ClassificationRule> = defaultClassificationRules(
                 phrases = listOf("حراج"),
             ),
             keywordRule(
+                id = "discount_campaign",
+                category = ClassificationCategory.DISCOUNT,
+                weight = 65,
+                explanation = "A named shopping campaign associated with special pricing was detected.",
+                phrases = listOf(
+                    "جمعه سیاه",
+                    "بلک فرایدی",
+                ),
+            ),
+            keywordRule(
                 id = "generic_promotion",
                 category = ClassificationCategory.PROMOTIONAL_NON_DISCOUNT,
                 weight = 40,
@@ -186,6 +196,10 @@ class RuleRegistry(rules: List<ClassificationRule> = defaultClassificationRules(
                     "کالاهای تازه",
                     "مجموعه تابستانی",
                     "فروش ویژه",
+                    "قسطی جمعه",
+                    "قسطی‌جمعه",
+                    "شگفت انگیز",
+                    "شگفت‌انگیز",
                     "فروشگاه اینترنتی",
                     "خرید کنید",
                     "دیدن کنید",

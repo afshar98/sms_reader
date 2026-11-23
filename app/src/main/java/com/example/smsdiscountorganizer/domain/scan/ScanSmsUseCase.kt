@@ -261,6 +261,7 @@ class ScanSmsUseCase @Inject constructor(
         sourceDateMillis = dateMillis,
         extractedAtMillis = extractedAtMillis,
         applicableCategories = metadata.applicableCategories,
+        campaignBrand = metadata.campaignBrand,
     )
 
     private class ScanPersistenceException : Exception()

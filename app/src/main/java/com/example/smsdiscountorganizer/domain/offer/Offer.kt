@@ -18,8 +18,15 @@ data class Offer(
     val extractedAtMillis: Long,
     val applicableCategories: List<OfferCategory> = productCategory?.let(::legacyCategoryList).orEmpty(),
     val merchantCorrection: String? = null,
+    val campaignBrand: String? = null,
 ) {
     val effectiveMerchantName: String? get() = merchantCorrection ?: merchantName
+    val discountType: DiscountType? get() = resolveDiscountType(
+        percentageDiscounts,
+        fixedDiscounts,
+        freeShipping,
+        discountCode,
+    )
 }
 
 data class OfferMetadata(
@@ -34,7 +41,38 @@ data class OfferMetadata(
     val confidence: Double,
     val validUntilMillis: Long? = null,
     val applicableCategories: List<OfferCategory> = productCategory?.let(::legacyCategoryList).orEmpty(),
+    val campaignBrand: String? = null,
 )
+
+val OfferMetadata.discountType: DiscountType?
+    get() = resolveDiscountType(percentageDiscounts, fixedDiscounts, freeShipping, couponCode)
+
+enum class DiscountType {
+    PERCENTAGE,
+    FIXED_AMOUNT,
+    FREE_SHIPPING,
+    COUPON,
+    COMBINED,
+}
+
+private fun resolveDiscountType(
+    percentages: List<Double>?,
+    fixedAmounts: List<MonetaryAmount>?,
+    freeShipping: Boolean?,
+    couponCode: String?,
+): DiscountType? {
+    val types = buildSet {
+        if (!percentages.isNullOrEmpty()) add(DiscountType.PERCENTAGE)
+        if (!fixedAmounts.isNullOrEmpty()) add(DiscountType.FIXED_AMOUNT)
+        if (freeShipping == true) add(DiscountType.FREE_SHIPPING)
+        if (!couponCode.isNullOrBlank()) add(DiscountType.COUPON)
+    }
+    return when (types.size) {
+        0 -> null
+        1 -> types.single()
+        else -> DiscountType.COMBINED
+    }
+}
 
 private fun legacyCategoryList(category: ProductCategory): List<OfferCategory> =
     listOf(OfferCategory.fromStableId(category.name.lowercase()) ?: OfferCategory.UNKNOWN)
@@ -58,6 +96,7 @@ enum class ProductCategory {
     Home,
     Travel,
     Entertainment,
+    Jewelry,
 }
 
 /** Stable IDs form a hierarchy; display names and enum ordinals are not persisted. */
@@ -77,6 +116,7 @@ enum class OfferCategory(
     Food("food", "food_and_drink", "غذا و نوشیدنی"),
     Travel("travel", "general", "سفر"),
     Entertainment("entertainment", "general", "سرگرمی"),
+    Jewelry("jewelry", "shopping", "زیورآلات"),
     UNKNOWN("unknown", label = "نامشخص");
 
     companion object {

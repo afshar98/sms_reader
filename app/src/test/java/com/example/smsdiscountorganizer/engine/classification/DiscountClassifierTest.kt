@@ -94,6 +94,36 @@ class DiscountClassifierBehaviorTest {
         assertTrue(result.reasons.none { it.explanation.contains(message) })
         assertTrue(result.reasons.none { it.explanation.contains("secret-code-7482") })
     }
+
+    @Test
+    fun implicitProductPercentageAndCampaignCombineAsIndependentEvidence() {
+        val result = classifier.classify("هندزفری و پلاک طلا ۸۰٪\n۱۲ظهر، قسطی‌جمعه دیجی‌پی")
+
+        assertEquals(ClassificationCategory.DISCOUNT, result.category)
+        assertTrue(result.confidence >= 0.8)
+        assertTrue(result.reasons.any { it.ruleId == "implicit_product_percentage" })
+        assertTrue(result.reasons.any { it.ruleId == "campaign_with_product_context" })
+    }
+
+    @Test
+    fun percentageNearBatteryMetricIsNotAnImplicitOffer() {
+        val result = classifier.classify("شارژ باتری گوشی ۸۰٪ است")
+
+        assertEquals(ClassificationCategory.UNKNOWN, result.category)
+    }
+
+    @Test
+    fun recognizesBlackFridayAndInstallmentFridayAsCampaignDiscounts() {
+        assertEquals(ClassificationCategory.DISCOUNT, classifier.classify("جمعه سیاه آغاز شد").category)
+        assertEquals(
+            ClassificationCategory.PROMOTIONAL_NON_DISCOUNT,
+            classifier.classify("قسطی‌جمعه بدون قیمت یا محصول مشخص").category,
+        )
+        assertEquals(
+            ClassificationCategory.DISCOUNT,
+            classifier.classify("هندزفری ۸۰٪، قسطی‌جمعه برای خرید امروز").category,
+        )
+    }
 }
 
 data class SyntheticClassificationCase(

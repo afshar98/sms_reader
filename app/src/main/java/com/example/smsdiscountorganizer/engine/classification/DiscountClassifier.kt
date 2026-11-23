@@ -1,5 +1,7 @@
 package com.example.smsdiscountorganizer.engine.classification
 
+import com.example.smsdiscountorganizer.domain.offer.OfferCategory
+import com.example.smsdiscountorganizer.engine.extraction.ProductCategoryExtractor
 import com.example.smsdiscountorganizer.engine.text.PersianTextNormalizer
 import java.util.Locale
 
@@ -7,9 +9,19 @@ class DiscountClassifier(
     private val ruleRegistry: RuleRegistry = RuleRegistry(),
     private val normalizer: PersianTextNormalizer = PersianTextNormalizer(),
 ) {
+    private val productCategoryExtractor = ProductCategoryExtractor(normalizer)
+
     fun classify(message: String): ClassificationResult {
         val normalizedText = normalizer.normalize(message).lowercase(Locale.ROOT)
-        val matchingRules = ruleRegistry.matchingRules(normalizedText).let { rules ->
+        val contextualCampaignMatches = contextualCampaignDiscountRule.matches(normalizedText)
+        val matchingRules = (ruleRegistry.matchingRules(normalizedText) + listOfNotNull(
+            implicitPercentageRule.takeIf { it.matches(normalizedText) },
+            contextualCampaignDiscountRule.takeIf { contextualCampaignMatches },
+        ))
+            .let { rules ->
+                if (contextualCampaignMatches) rules.filterNot { it.id == GENERIC_PROMOTION_RULE_ID } else rules
+            }
+            .let { rules ->
             // Specific phrases such as "کد تخفیف" already contain the generic keyword.
             // Counting both as independent evidence inflates confidence without adding a signal.
             if (rules.any { it.id in SPECIFIC_DISCOUNT_RULE_IDS }) {
@@ -60,6 +72,7 @@ class DiscountClassifier(
 
     private companion object {
         const val GENERIC_DISCOUNT_RULE_ID = "discount_keyword"
+        const val GENERIC_PROMOTION_RULE_ID = "generic_promotion"
         val SPECIFIC_DISCOUNT_RULE_IDS = setOf(
             "discount_code",
             "discount_percentage",
@@ -67,5 +80,49 @@ class DiscountClassifier(
         )
         const val CONFIDENCE_BASELINE = 20.0
         const val MAX_CONFIDENCE = 0.99
+        val PERCENTAGE_METRIC_CONTEXT = Regex(
+            "(?:باتری|شارژ|تکمیل|پیشرفت|سلامت|ظرفیت|درصد\\s*موفقیت).{0,24}[0-9]+\\s*%|" +
+                "[0-9]+\\s*%.{0,24}(?:باتری|شارژ|تکمیل|پیشرفت|سلامت|ظرفیت)",
+        )
+        val CAMPAIGN_TERMS = listOf(
+            "فروش ویژه",
+            "جمعه سیاه",
+            "بلک فرایدی",
+            "قسطی جمعه",
+            "قسطی‌جمعه",
+            "شگفت انگیز",
+            "شگفت‌انگیز",
+        )
+        val PURCHASE_CONTEXT = Regex("خرید|سفارش|پرداخت|سبد(?:\\s+خرید)?|ثبت\\s+سفارش")
+    }
+
+    private val implicitPercentageRule = object : ClassificationRule {
+        override val id = "implicit_product_percentage"
+        override val category = ClassificationCategory.DISCOUNT
+        override val weight = 85
+        override val priority = 0
+        override val explanation = "A percentage is closely associated with a recognized product category."
+
+        override fun matches(normalizedText: String): Boolean =
+            !PERCENTAGE_METRIC_CONTEXT.containsMatchIn(normalizedText) &&
+                productCategoryExtractor.hasProductNearPercentage(normalizedText)
+    }
+
+    private val contextualCampaignDiscountRule = object : ClassificationRule {
+        override val id = "campaign_with_product_context"
+        override val category = ClassificationCategory.DISCOUNT
+        override val weight = 70
+        override val priority = 0
+        override val explanation = "A campaign phrase appears with a product and purchase or percentage evidence."
+
+        override fun matches(normalizedText: String): Boolean {
+            val hasCampaign = CAMPAIGN_TERMS.any(normalizedText::contains)
+            val hasProduct = productCategoryExtractor.extractAll(normalizedText).any {
+                it != OfferCategory.GENERAL && it != OfferCategory.UNKNOWN
+            }
+            val hasPurchaseOrProductPercentage = PURCHASE_CONTEXT.containsMatchIn(normalizedText) ||
+                productCategoryExtractor.hasProductNearPercentage(normalizedText)
+            return hasCampaign && hasProduct && hasPurchaseOrProductPercentage
+        }
     }
 }
