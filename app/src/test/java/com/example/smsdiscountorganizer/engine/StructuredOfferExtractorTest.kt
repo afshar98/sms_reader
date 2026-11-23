@@ -55,6 +55,26 @@ class StructuredOfferExtractorDetailTest {
     }
 
     @Test
+    fun parsesAllDigitScriptsAndGroupedMonetaryValuesConsistently() {
+        val Persian = extract("۸۰٪ تخفیف و ۱۵۰٬۰۰۰ تومان تخفیف؛ حداقل خرید ۱,٥٠٠,٠٠٠ تومان")
+        val Arabic = extract("٨٠٪ تخفیف و ١٥٠,٠٠٠ تومان تخفیف؛ حداقل خرید ١,٥٠٠,٠٠٠ تومان")
+        val Latin = extract("80% تخفیف و 150,000 تومان تخفیف؛ حداقل خرید 1,500,000 تومان")
+
+        assertEquals(listOf(80.0), Persian.percentageDiscounts)
+        assertEquals(Persian.percentageDiscounts, Arabic.percentageDiscounts)
+        assertEquals(Persian.percentageDiscounts, Latin.percentageDiscounts)
+        assertEquals(listOf(MonetaryAmount("150000", MoneyCurrency.Toman)), Persian.fixedDiscounts)
+        assertEquals(Persian.fixedDiscounts, Arabic.fixedDiscounts)
+        assertEquals(Persian.fixedDiscounts, Latin.fixedDiscounts)
+        assertEquals(MonetaryAmount("1500000", MoneyCurrency.Toman), Persian.minimumPurchase)
+        assertEquals(Persian.minimumPurchase, Arabic.minimumPurchase)
+        assertEquals(Persian.minimumPurchase, Latin.minimumPurchase)
+
+        val maximumDiscount = extract("حداکثر تخفیف ١٥٠,٠٠٠ تومان")
+        assertEquals(listOf(MonetaryAmount("150000", MoneyCurrency.Toman)), maximumDiscount.fixedDiscounts)
+    }
+
+    @Test
     fun minimumPurchaseIsNotReportedAsDiscountAmount() {
         val result = extract("خرید بالای ۱۰۰ هزار تومان، ۲۰٪ تخفیف")
 

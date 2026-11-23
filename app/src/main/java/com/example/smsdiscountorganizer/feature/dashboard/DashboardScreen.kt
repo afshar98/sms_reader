@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.smsdiscountorganizer.core.components.OfferCard
 import com.example.smsdiscountorganizer.core.components.formatTimestamp
+import com.example.smsdiscountorganizer.core.format.PersianNumberFormatter
 import com.example.smsdiscountorganizer.core.permission.SmsPermissionScanCard
 import java.time.Clock
 import java.time.ZoneId
@@ -76,7 +77,7 @@ fun DashboardScreen(
             if (state.progress.isScanning) {
                 item {
                     Text(
-                        "${state.progress.processedMessages} پیام بررسی شد؛ ${state.progress.offersFound} پیشنهاد پیدا شد.",
+                        PersianNumberFormatter.formatNumericText("${state.progress.processedMessages} پیام بررسی شد؛ ${state.progress.offersFound} پیشنهاد پیدا شد."),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -84,13 +85,13 @@ fun DashboardScreen(
             if (state.progress.malformedMessages > 0) {
                 item {
                     Text(
-                        "${state.progress.malformedMessages} پیام نامعتبر نادیده گرفته شد.",
+                        PersianNumberFormatter.formatNumericText("${state.progress.malformedMessages} پیام نامعتبر نادیده گرفته شد."),
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
-            state.message?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary) } }
-            state.readError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
+            state.message?.let { message -> item { Text(PersianNumberFormatter.formatNumericText(message), color = MaterialTheme.colorScheme.primary) } }
+            state.readError?.let { error -> item { Text(PersianNumberFormatter.formatNumericText(error), color = MaterialTheme.colorScheme.error) } }
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -138,7 +139,7 @@ private fun SummaryCard(label: String, count: Int, modifier: Modifier = Modifier
             modifier = Modifier.padding(vertical = 16.dp, horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(count.toString(), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Text(PersianNumberFormatter.formatNumber(count), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
             Text(label, style = MaterialTheme.typography.labelLarge)
         }
     }

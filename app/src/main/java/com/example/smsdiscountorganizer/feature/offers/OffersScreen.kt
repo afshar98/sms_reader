@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.smsdiscountorganizer.core.components.OfferCard
+import com.example.smsdiscountorganizer.core.format.PersianNumberFormatter
 import java.time.Clock
 import java.time.ZoneId
 
@@ -113,10 +114,10 @@ fun OffersScreen(
                 }
             }
         }
-        state.error?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
+        state.error?.let { error -> item { Text(PersianNumberFormatter.formatNumericText(error), color = MaterialTheme.colorScheme.error) } }
         when {
             state.isLoading -> item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
-            state.error != null -> item { EmptyOffersCard("بارگذاری ناموفق", state.error ?: "") }
+            state.error != null -> item { EmptyOffersCard("بارگذاری ناموفق", PersianNumberFormatter.formatNumericText(state.error.orEmpty())) }
             state.offers.isEmpty() -> item { EmptyOffersCard("هنوز پیشنهادی ذخیره نشده", "با اسکن صندوق پیامک، پیشنهادهای تخفیف اینجا جمع می‌شوند.") }
             state.visibleOffers.isEmpty() -> item { EmptyOffersCard("نتیجه‌ای پیدا نشد", "عبارت جست‌وجو یا فیلترها را تغییر دهید.") }
             else -> items(state.visibleOffers, key = { it.sourceSmsId }) { offer ->

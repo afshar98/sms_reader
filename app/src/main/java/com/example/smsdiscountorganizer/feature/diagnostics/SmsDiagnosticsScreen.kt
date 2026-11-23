@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.smsdiscountorganizer.core.permission.SmsPermissionManager
 import com.example.smsdiscountorganizer.core.permission.SmsPermissionStatus
+import com.example.smsdiscountorganizer.core.format.PersianNumberFormatter
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -129,14 +130,14 @@ fun SmsDiagnosticsScreen(viewModel: SmsDiagnosticsViewModel) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("Inbox message count", style = MaterialTheme.typography.titleMedium)
-                Text(state.inboxMessageCount?.toString() ?: "Not scanned yet")
+                Text(state.inboxMessageCount?.let(PersianNumberFormatter::formatNumber) ?: "Not scanned yet")
                 Text("Last successful scan", style = MaterialTheme.typography.titleMedium)
                 Text(state.lastSuccessfulScanAt?.let(::formatTimestamp) ?: "Never")
             }
         }
 
         state.readError?.let { error ->
-            Text("Read error: $error", color = MaterialTheme.colorScheme.error)
+            Text("Read error: ${PersianNumberFormatter.formatNumericText(error)}", color = MaterialTheme.colorScheme.error)
         }
     }
 
@@ -177,9 +178,9 @@ private fun SmsPermissionStatus.toDisplayText(): String = when (this) {
 }
 
 private fun formatTimestamp(timestamp: java.time.Instant): String =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+    PersianNumberFormatter.localizeDigits(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
         .withZone(ZoneId.systemDefault())
-        .format(timestamp)
+        .format(timestamp))
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this

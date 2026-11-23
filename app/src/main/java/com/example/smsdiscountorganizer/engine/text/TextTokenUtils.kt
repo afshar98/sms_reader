@@ -7,10 +7,10 @@ object TextTokenUtils {
         RegexOption.IGNORE_CASE,
     )
     private val currencyAmountPattern = Regex(
-        "(?<![\\p{L}\\p{N}])([+\\-]?[0-9٠-٩۰-۹][0-9٠-٩۰-۹,٬٫.]*)(\\s*)(تومان|تومن|ریال|ريال)(?![\\p{L}\\p{N}])",
+        "(?<![\\p{L}\\p{N}])([+\\-]?[0-9٠-٩۰-۹][0-9٠-٩۰-۹,٬،٫.\\s]*)(\\s*)(تومان|تومن|ریال|ريال)(?![\\p{L}\\p{N}])",
     )
     private val percentagePattern = Regex(
-        "(?<![\\p{L}\\p{N}])([+\\-]?[0-9٠-٩۰-۹]+(?:[.,٫][0-9٠-٩۰-۹]+)?)\\s*([%٪﹪])",
+        "(?<![\\p{L}\\p{N}])([+\\-]?[0-9٠-٩۰-۹][0-9٠-٩۰-۹,٬،٫.\\s]*)\\s*([%٪﹪])",
     )
     private val currencyUnitPattern = Regex("(?<![\\p{L}\\p{N}])(تومان|تومن|ریال|ريال)(?![\\p{L}\\p{N}])")
 

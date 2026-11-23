@@ -8,7 +8,7 @@ class PurchaseConditionExtractor(
 ) {
     private val minimumPattern = Regex(
         "(?:حداقل\\s*(?:مبلغ\\s*)?(?:خرید|سفارش)|(?:خرید|سفارش)\\s*(?:بالای|بیش\\s*از|حداقل))" +
-            "\\s*[:：]?\\s*(\\d+(?:[.,]\\d+)?)\\s*(هزار|میلیون)?\\s*(تومان|تومن|ریال)",
+            "\\s*[:：]?\\s*([0-9]+(?:[0-9,٬،٫.]*[0-9])?)\\s*(هزار|میلیون)?\\s*(تومان|تومن|ریال)",
     )
 
     fun extractMinimumPurchase(text: String): MonetaryAmount? {

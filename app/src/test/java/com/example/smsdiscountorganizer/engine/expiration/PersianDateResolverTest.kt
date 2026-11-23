@@ -23,6 +23,21 @@ class PersianDateResolverTest {
     }
 
     @Test
+    fun acceptsPersianArabicAndLatinDigitsForDatesAndRelativeTimes() {
+        val expectedDate = LocalDate.of(2016, 4, 11)
+        assertResolvedDate(resolver.resolve("تا ۱۳۹۵/۰۱/۲۳", receivedAt("2025-03-19T12:00:00Z")), expectedDate)
+        assertResolvedDate(resolver.resolve("تا ١٣٩٥/٠١/٢٣", receivedAt("2025-03-19T12:00:00Z")), expectedDate)
+        assertResolvedDate(resolver.resolve("تا 1395/01/23", receivedAt("2025-03-19T12:00:00Z")), expectedDate)
+
+        val reference = receivedAt("2025-03-20T12:00:00Z")
+        val expectedInstant = Instant.ofEpochMilli(reference).plus(Duration.ofHours(48))
+        listOf("۴۸ ساعت آینده", "٤٨ ساعت آینده", "48 ساعت آینده").forEach { input ->
+            val resolved = resolver.resolve(input, reference) as ExpirationResolution.Resolved
+            assertEquals(expectedInstant, resolved.expiresAt)
+        }
+    }
+
+    @Test
     fun resolvesPersianMonthNameAndExplicitYear() {
         val result = resolver.resolve("تا ۲۳ فروردین ۱۳۹۵", receivedAt("2025-03-19T12:00:00Z"))
 

@@ -12,7 +12,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import android.text.BidiFormatter
 import androidx.compose.ui.unit.dp
+import com.example.smsdiscountorganizer.core.format.PersianNumberFormatter
 import com.example.smsdiscountorganizer.domain.offer.Offer
 import com.example.smsdiscountorganizer.feature.offers.OfferStatus
 import com.example.smsdiscountorganizer.feature.offers.statusAt
@@ -49,12 +51,18 @@ fun OfferCard(
             }
             offer.campaignBrand?.let { Text("برند کمپین: $it", style = MaterialTheme.typography.bodySmall) }
             Text(
-                offer.title ?: offer.discountValue ?: if (offer.discountCode != null) "کد تخفیف" else "پیشنهاد تخفیف",
+                offer.title?.let(PersianNumberFormatter::formatNumericText)
+                    ?: offer.discountValue?.let(PersianNumberFormatter::formatNumericText)
+                    ?: offer.percentageDiscounts?.joinToString("، ") { PersianNumberFormatter.formatPercent(it) }
+                    ?: if (offer.discountCode != null) "کد تخفیف" else "پیشنهاد تخفیف",
                 style = MaterialTheme.typography.titleLarge,
             )
-            offer.discountValue?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
-            offer.discountCode?.let { Text("کد تخفیف: $it", style = MaterialTheme.typography.bodyMedium) }
-            offer.fixedDiscounts?.joinToString("، ") { "${it.amount} ${it.currency.toPersian()}" }
+            val percentageText = offer.percentageDiscounts
+                ?.joinToString("، ") { PersianNumberFormatter.formatPercent(it) }
+            (offer.discountValue?.let(PersianNumberFormatter::formatNumericText) ?: percentageText)
+                ?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+            offer.discountCode?.let { Text("کد تخفیف: ${BidiFormatter.getInstance(true).unicodeWrap(it)}", style = MaterialTheme.typography.bodyMedium) }
+            offer.fixedDiscounts?.joinToString("، ") { "${PersianNumberFormatter.formatNumber(it.amount)} ${it.currency.toPersian()}" }
                 ?.takeIf(String::isNotBlank)
                 ?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             offer.validUntilMillis?.let {
@@ -72,10 +80,10 @@ fun statusLabel(status: OfferStatus): String = when (status) {
 }
 
 fun formatTimestamp(timestampMillis: Long, zoneId: ZoneId): String =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+    PersianNumberFormatter.localizeDigits(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
         .withLocale(Locale.forLanguageTag("fa-IR"))
         .withZone(zoneId)
-        .format(Instant.ofEpochMilli(timestampMillis))
+        .format(Instant.ofEpochMilli(timestampMillis)))
 
 private fun com.example.smsdiscountorganizer.domain.offer.MoneyCurrency.toPersian(): String = when (this) {
     com.example.smsdiscountorganizer.domain.offer.MoneyCurrency.Toman -> "تومان"

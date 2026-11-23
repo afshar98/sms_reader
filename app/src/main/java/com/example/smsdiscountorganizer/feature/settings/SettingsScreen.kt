@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.smsdiscountorganizer.core.permission.SmsPermissionScanCard
 import com.example.smsdiscountorganizer.core.permission.SmsPermissionStatus
+import com.example.smsdiscountorganizer.core.format.PersianNumberFormatter
 import com.example.smsdiscountorganizer.domain.settings.ThemeMode
 
 @Composable
@@ -52,11 +53,11 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenSmsDiagnostics: () -> Uni
         TextButton(onClick = onOpenSmsDiagnostics) { Text("جزئیات و عیب‌یابی صندوق پیامک") }
         if (state.progress.isScanning) {
             Text(
-                "${state.progress.processedMessages} پیام بررسی شد؛ ${state.progress.offersFound} پیشنهاد پیدا شد.",
+                PersianNumberFormatter.formatNumericText("${state.progress.processedMessages} پیام بررسی شد؛ ${state.progress.offersFound} پیشنهاد پیدا شد."),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-        state.scanMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        state.scanMessage?.let { Text(PersianNumberFormatter.formatNumericText(it), color = MaterialTheme.colorScheme.primary) }
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -91,7 +92,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenSmsDiagnostics: () -> Uni
                 Button(onClick = { showClearConfirmation = true }) { Text("پاک‌کردن همه داده‌ها") }
             }
         }
-        state.clearMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        state.clearMessage?.let { Text(PersianNumberFormatter.formatNumericText(it), color = MaterialTheme.colorScheme.primary) }
         Column(Modifier.padding(bottom = 20.dp)) { Text("نسخه ۱٫۰", style = MaterialTheme.typography.labelMedium) }
     }
 

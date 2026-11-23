@@ -1,6 +1,7 @@
 package com.example.smsdiscountorganizer.feature.offers
 
 import com.example.smsdiscountorganizer.domain.offer.Offer
+import com.example.smsdiscountorganizer.engine.text.NumberNormalizer
 import java.time.Instant
 import java.time.ZoneId
 
@@ -33,14 +34,17 @@ fun filterOffers(
 ): List<Offer> = offers
     .asSequence()
     .filter { offer ->
-        val normalizedQuery = query.trim()
+        val normalizedQuery = NumberNormalizer.normalizeNumericText(query.trim())
         normalizedQuery.isEmpty() || listOfNotNull(
             offer.title,
             offer.effectiveMerchantName,
             offer.campaignBrand,
-            offer.discountCode,
             offer.discountValue,
-        ).any { it.contains(normalizedQuery, ignoreCase = true) }
+        ).plus(offer.percentageDiscounts.orEmpty().map { "$it%" })
+            .plus(offer.fixedDiscounts.orEmpty().map { it.amount })
+            .plus(listOfNotNull(offer.minimumPurchase?.amount))
+            .any { NumberNormalizer.normalizeNumericText(it).contains(normalizedQuery, ignoreCase = true) } ||
+            offer.discountCode?.contains(query.trim(), ignoreCase = true) == true
     }
     .filter { offer -> merchant == null || offer.effectiveMerchantName == merchant }
     .filter { offer -> status.status == null || offer.statusAt(nowMillis, zoneId) == status.status }

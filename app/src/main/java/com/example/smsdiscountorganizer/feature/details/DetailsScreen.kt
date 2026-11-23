@@ -27,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import android.text.BidiFormatter
+import com.example.smsdiscountorganizer.core.format.PersianNumberFormatter
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.smsdiscountorganizer.core.components.formatTimestamp
@@ -79,10 +81,11 @@ fun DetailsScreen(
                     DetailCard("برند کمپین") { Text(brand, style = MaterialTheme.typography.titleLarge) }
                 }
                 DetailCard("میزان تخفیف") {
-                    item.percentageDiscounts?.forEach { Text("${it}% تخفیف درصدی") }
-                    item.fixedDiscounts?.forEach { Text("${it.amount} ${it.currency.label()} تخفیف") }
+                    item.percentageDiscounts?.forEach { Text("${PersianNumberFormatter.formatPercent(it)} تخفیف درصدی") }
+                    item.fixedDiscounts?.forEach { Text("${PersianNumberFormatter.formatNumber(it.amount)} ${it.currency.label()} تخفیف") }
                     if (item.percentageDiscounts.isNullOrEmpty() && item.fixedDiscounts.isNullOrEmpty()) {
-                        Text(item.discountValue ?: if (item.freeShipping == true) "ارسال رایگان" else "مقدار مشخص نشده")
+                        Text(item.discountValue?.let(PersianNumberFormatter::formatNumericText)
+                            ?: if (item.freeShipping == true) "ارسال رایگان" else "مقدار مشخص نشده")
                     }
                     if (item.freeShipping == true) Text("ارسال رایگان")
                 }
@@ -93,7 +96,7 @@ fun DetailsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(code, style = MaterialTheme.typography.titleLarge)
+                            Text(BidiFormatter.getInstance(true).unicodeWrap(code), style = MaterialTheme.typography.titleLarge)
                             Button(onClick = {
                                 clipboard.setText(AnnotatedString(code))
                                 scope.launch { snackbarHostState.showSnackbar("کد کپی شد") }
@@ -102,7 +105,7 @@ fun DetailsScreen(
                     }
                 }
                 DetailCard("شرایط استفاده") {
-                    item.minimumPurchase?.let { Text("حداقل خرید: ${it.amount} ${it.currency.label()}") }
+                    item.minimumPurchase?.let { Text("حداقل خرید: ${PersianNumberFormatter.formatNumber(it.amount)} ${it.currency.label()}") }
                     val categories = item.applicableCategories.ifEmpty {
                         item.productCategory?.let { category ->
                             com.example.smsdiscountorganizer.domain.offer.OfferCategory.fromLegacy(category)?.let(::listOf).orEmpty()
@@ -125,7 +128,7 @@ fun DetailsScreen(
                     }
                 }
                 DetailCard("اطلاعات استخراج") {
-                    Text("اطمینان استخراج: ${(item.extractionConfidence * 100).toInt()}٪")
+                Text("اطمینان استخراج: ${PersianNumberFormatter.formatPercent((item.extractionConfidence * 100).toInt())}")
                     Text("زمان دریافت پیام: ${formatTimestamp(item.sourceDateMillis, zoneId)}")
                 }
                 OfferSourceTextCard(sourceText)

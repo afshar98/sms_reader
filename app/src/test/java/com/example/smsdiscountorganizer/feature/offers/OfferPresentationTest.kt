@@ -50,6 +50,20 @@ class OfferPresentationTest {
         assertEquals(listOf(2L, 1L, 3L), allByExpiry.map(Offer::sourceSmsId))
     }
 
+    @Test
+    fun numericSearchMatchesPersianArabicAndLatinDigitFormsWithoutChangingCouponCodes() {
+        val offers = listOf(
+            offer(1, null, title = "تخفیف ۸۰٪"),
+            offer(2, null, title = "تخفیف ٨٠٪"),
+            offer(3, null, title = "تخفیف 80%", code = "SAVE20"),
+        )
+
+        listOf("80", "۸۰", "٨٠").forEach { query ->
+            assertEquals(listOf(1L, 2L, 3L), filterOffers(offers, query, OfferStatusFilter.ALL, null, 0, zone).map(Offer::sourceSmsId))
+        }
+        assertEquals(listOf(3L), filterOffers(offers, "SAVE20", OfferStatusFilter.ALL, null, 0, zone).map(Offer::sourceSmsId))
+    }
+
     private fun offer(
         id: Long,
         expiry: Long?,

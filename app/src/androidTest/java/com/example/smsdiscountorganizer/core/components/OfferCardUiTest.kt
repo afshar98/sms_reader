@@ -5,6 +5,9 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import com.example.smsdiscountorganizer.core.theme.OrganizerTheme
 import com.example.smsdiscountorganizer.domain.offer.MoneyCurrency
 import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
@@ -69,13 +72,48 @@ class OfferCardUiTest {
             extractedAtMillis = 1_700_000_000_000,
         )
         composeRule.setContent {
-            OrganizerTheme {
-                OfferCard(offer, 1_700_000_000_000, ZoneId.of("Asia/Tehran"), onClick = {})
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                OrganizerTheme {
+                    OfferCard(offer, 1_700_000_000_000, ZoneId.of("Asia/Tehran"), onClick = {})
+                }
             }
         }
 
         composeRule.onNodeWithText("کد تخفیف").assertIsDisplayed()
-        composeRule.onNodeWithText("کد تخفیف: xyzp").assertIsDisplayed()
+        composeRule.onNodeWithText("کد تخفیف:", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("xyzp", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("بدون مهلت مشخص").assertIsDisplayed()
+    }
+
+    @Test
+    fun offerCardFormatsDiscountAndGroupedAmountsWithPersianDigitsInRtlUi() {
+        val offer = Offer(
+            sourceSmsId = 19,
+            title = "تخفیف 80%",
+            merchantName = "فروشگاه مهر",
+            discountCode = "SAVE20",
+            discountValue = "80%",
+            percentageDiscounts = listOf(80.0),
+            fixedDiscounts = listOf(MonetaryAmount("150000", MoneyCurrency.Toman)),
+            freeShipping = null,
+            minimumPurchase = null,
+            productCategory = null,
+            extractionConfidence = 0.95,
+            validUntilMillis = null,
+            sourceDateMillis = 1_700_000_000_000,
+            extractedAtMillis = 1_700_000_000_000,
+        )
+        composeRule.setContent {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                OrganizerTheme {
+                    OfferCard(offer, 1_700_000_000_000, ZoneId.of("Asia/Tehran"), onClick = {})
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("تخفیف ۸۰٪").assertIsDisplayed()
+        composeRule.onNodeWithText("۸۰٪").assertIsDisplayed()
+        composeRule.onNodeWithText("۱۵۰٬۰۰۰ تومان").assertIsDisplayed()
+        composeRule.onNodeWithText("SAVE20", substring = true).assertIsDisplayed()
     }
 }

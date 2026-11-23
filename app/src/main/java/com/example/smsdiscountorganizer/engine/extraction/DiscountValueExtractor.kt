@@ -2,6 +2,7 @@ package com.example.smsdiscountorganizer.engine.extraction
 
 import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
 import com.example.smsdiscountorganizer.engine.text.PersianTextNormalizer
+import com.example.smsdiscountorganizer.engine.text.NumberNormalizer
 
 data class DiscountValues(
     val percentageDiscounts: List<Double>?,
@@ -13,13 +14,13 @@ class DiscountValueExtractor(
     private val purchaseConditionExtractor: PurchaseConditionExtractor = PurchaseConditionExtractor(normalizer),
 ) {
     private val percentagePatterns = listOf(
-        Regex("(\\d+(?:[.,]\\d+)?)\\s*(?:%|درصد)(?:ی)?(?:\\s*تخفیف)?"),
-        Regex("تخفیف\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:%|درصد)(?:ی)?"),
-        Regex("درصد\\s*تخفیف\\s*(\\d+(?:[.,]\\d+)?)"),
+        Regex("($NUMBER)\\s*(?:%|درصد)(?:ی)?(?:\\s*تخفیف)?"),
+        Regex("تخفیف\\s*($NUMBER)\\s*(?:%|درصد)(?:ی)?"),
+        Regex("درصد\\s*تخفیف\\s*($NUMBER)"),
     )
     private val fixedPatterns = listOf(
-        Regex("(\\d+(?:[.,]\\d+)?)\\s*(هزار|میلیون)?\\s*(تومان|تومن|ریال)(?:ی)?\\s*تخفیف"),
-        Regex("تخفیف\\s*(\\d+(?:[.,]\\d+)?)\\s*(هزار|میلیون)?\\s*(تومان|تومن|ریال)(?:ی)?"),
+        Regex("($NUMBER)\\s*(هزار|میلیون)?\\s*(تومان|تومن|ریال)(?:ی)?\\s*تخفیف"),
+        Regex("تخفیف\\s*($NUMBER)\\s*(هزار|میلیون)?\\s*(تومان|تومن|ریال)(?:ی)?"),
     )
 
     fun extract(text: String): DiscountValues {
@@ -29,7 +30,7 @@ class DiscountValueExtractor(
             pattern.findAll(normalized).filterNot { match -> excludedRanges.any { it.overlaps(match.range) } }.toList()
         }.distinctBy { it.range }
         val percentages = percentageMatches.mapNotNull { match ->
-            match.groupValues[1].replace(',', '.').toDoubleOrNull()
+            NumberNormalizer.parse(match.groupValues[1])?.toDouble()
         }
         val fixedMatches = fixedPatterns.flatMap { pattern ->
             pattern.findAll(normalized).filterNot { match -> excludedRanges.any { it.overlaps(match.range) } }.toList()
@@ -45,4 +46,8 @@ class DiscountValueExtractor(
     }
 
     private fun IntRange.overlaps(other: IntRange): Boolean = first <= other.last && other.first <= last
+
+    private companion object {
+        const val NUMBER = "[0-9]+(?:[0-9,٬،٫.]*[0-9])?"
+    }
 }

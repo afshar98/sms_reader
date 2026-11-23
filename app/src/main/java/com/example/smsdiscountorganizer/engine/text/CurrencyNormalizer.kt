@@ -31,5 +31,5 @@ class CurrencyNormalizer {
     }.joinToString(separator = "")
 
     private fun normalizeNumber(value: String): String =
-        DigitNormalizer.normalize(value).replace('٫', '.')
+        NumberNormalizer.normalizeNumericValue(value) ?: DigitNormalizer.normalize(value).replace('٫', '.')
 }
