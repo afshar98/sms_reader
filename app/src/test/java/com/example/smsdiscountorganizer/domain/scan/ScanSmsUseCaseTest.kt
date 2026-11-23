@@ -110,6 +110,10 @@ class ScanSmsUseCaseTest {
             offers.forEach { this.offers[it.sourceSmsId] = it }
         }
 
+        override suspend fun updateMerchantCorrection(sourceSmsId: Long, merchantName: String?) {
+            offers[sourceSmsId]?.let { offers[sourceSmsId] = it.copy(merchantCorrection = merchantName?.trim()?.takeIf(String::isNotEmpty)) }
+        }
+
         override suspend fun clearAllLocalData() = offers.clear()
     }
 

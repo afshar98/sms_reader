@@ -1,7 +1,6 @@
 package com.example.smsdiscountorganizer.feature.details
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -19,7 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,7 +70,11 @@ fun DetailsScreen(
             ) {
                 TextButton(onClick = onBack) { Text("بازگشت به پیشنهادها") }
                 Text(item.title ?: "جزئیات پیشنهاد", style = MaterialTheme.typography.headlineMedium)
-                Text(item.merchantName ?: "فروشگاه نامشخص", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                MerchantCorrectionCard(
+                    merchantName = item.effectiveMerchantName,
+                    correction = item.merchantCorrection,
+                    onSave = viewModel::saveMerchantCorrection,
+                )
                 DetailCard("میزان تخفیف") {
                     item.percentageDiscounts?.forEach { Text("${it}% تخفیف درصدی") }
                     item.fixedDiscounts?.forEach { Text("${it.amount} ${it.currency.label()} تخفیف") }
@@ -94,8 +100,13 @@ fun DetailsScreen(
                 }
                 DetailCard("شرایط استفاده") {
                     item.minimumPurchase?.let { Text("حداقل خرید: ${it.amount} ${it.currency.label()}") }
-                    item.productCategory?.let { Text("دسته‌بندی: ${it.label()}") }
-                    if (item.freeShipping != true && item.minimumPurchase == null && item.productCategory == null) {
+                    val categories = item.applicableCategories.ifEmpty {
+                        item.productCategory?.let { category ->
+                            com.example.smsdiscountorganizer.domain.offer.OfferCategory.fromLegacy(category)?.let(::listOf).orEmpty()
+                        }.orEmpty()
+                    }
+                    if (categories.isNotEmpty()) Text("دسته‌بندی: ${categories.joinToString("، ") { it.label }}")
+                    if (item.freeShipping != true && item.minimumPurchase == null && categories.isEmpty()) {
                         Text("شرط دیگری ثبت نشده است.")
                     }
                 }
@@ -115,6 +126,34 @@ fun DetailsScreen(
                     Text("زمان دریافت پیام: ${formatTimestamp(item.sourceDateMillis, zoneId)}")
                 }
                 OfferSourceTextCard(sourceText)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MerchantCorrectionCard(
+    merchantName: String?,
+    correction: String?,
+    onSave: (String?) -> Unit,
+) {
+    var merchantInput by remember(correction) { mutableStateOf(correction.orEmpty()) }
+    DetailCard("فروشگاه") {
+        Text(merchantName ?: "فروشگاه نامشخص", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+        OutlinedTextField(
+            value = merchantInput,
+            onValueChange = { merchantInput = it.take(50) },
+            label = { Text("اصلاح نام فروشگاه") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { onSave(merchantInput) }) { Text("ذخیره اصلاح") }
+            if (correction != null) {
+                TextButton(onClick = {
+                    merchantInput = ""
+                    onSave(null)
+                }) { Text("حذف اصلاح") }
             }
         }
     }
@@ -153,15 +192,4 @@ private fun DetailCard(title: String, content: @Composable () -> Unit) {
 private fun com.example.smsdiscountorganizer.domain.offer.MoneyCurrency.label(): String = when (this) {
     com.example.smsdiscountorganizer.domain.offer.MoneyCurrency.Toman -> "تومان"
     com.example.smsdiscountorganizer.domain.offer.MoneyCurrency.Rial -> "ریال"
-}
-
-private fun com.example.smsdiscountorganizer.domain.offer.ProductCategory.label(): String = when (this) {
-    com.example.smsdiscountorganizer.domain.offer.ProductCategory.Apparel -> "پوشاک"
-    com.example.smsdiscountorganizer.domain.offer.ProductCategory.Grocery -> "خواربار"
-    com.example.smsdiscountorganizer.domain.offer.ProductCategory.Electronics -> "کالای دیجیتال"
-    com.example.smsdiscountorganizer.domain.offer.ProductCategory.Beauty -> "زیبایی و سلامت"
-    com.example.smsdiscountorganizer.domain.offer.ProductCategory.Food -> "غذا و نوشیدنی"
-    com.example.smsdiscountorganizer.domain.offer.ProductCategory.Home -> "خانه"
-    com.example.smsdiscountorganizer.domain.offer.ProductCategory.Travel -> "سفر"
-    com.example.smsdiscountorganizer.domain.offer.ProductCategory.Entertainment -> "سرگرمی"
 }

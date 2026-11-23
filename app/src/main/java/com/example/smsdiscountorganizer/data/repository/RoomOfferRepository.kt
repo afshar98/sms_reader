@@ -18,7 +18,20 @@ class RoomOfferRepository @Inject constructor(
         database.offerDao().observeAll().map { offers -> offers.map(OfferEntity::toDomain) }
 
     override suspend fun upsertOffers(offers: List<Offer>) {
-        database.offerDao().upsertAll(offers.map(Offer::toEntity))
+        database.withTransaction {
+            val dao = database.offerDao()
+            dao.upsertAll(offers.map { offer ->
+                val entity = offer.toEntity()
+                val previousCorrection = dao.getBySourceSmsId(offer.sourceSmsId)?.merchantCorrection
+                entity.copy(merchantCorrection = entity.merchantCorrection ?: previousCorrection)
+            })
+        }
+    }
+
+    override suspend fun updateMerchantCorrection(sourceSmsId: Long, merchantName: String?) {
+        val correction = merchantName?.trim()?.takeIf(String::isNotEmpty)
+        require(correction == null || correction.length <= 50) { "Merchant corrections are limited to 50 characters" }
+        database.offerDao().setMerchantCorrection(sourceSmsId, correction)
     }
 
     override suspend fun clearAllLocalData() {
@@ -45,6 +58,8 @@ internal fun OfferEntity.toDomain(): Offer = Offer(
     validUntilMillis = validUntilMillis,
     sourceDateMillis = sourceDateMillis,
     extractedAtMillis = extractedAtMillis,
+    applicableCategories = applicableCategories,
+    merchantCorrection = merchantCorrection,
 )
 
 internal fun Offer.toEntity(): OfferEntity = OfferEntity(
@@ -62,4 +77,6 @@ internal fun Offer.toEntity(): OfferEntity = OfferEntity(
     validUntilMillis = validUntilMillis,
     sourceDateMillis = sourceDateMillis,
     extractedAtMillis = extractedAtMillis,
+    applicableCategories = applicableCategories,
+    merchantCorrection = merchantCorrection,
 )

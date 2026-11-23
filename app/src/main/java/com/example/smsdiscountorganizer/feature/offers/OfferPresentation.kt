@@ -36,12 +36,12 @@ fun filterOffers(
         val normalizedQuery = query.trim()
         normalizedQuery.isEmpty() || listOfNotNull(
             offer.title,
-            offer.merchantName,
+            offer.effectiveMerchantName,
             offer.discountCode,
             offer.discountValue,
         ).any { it.contains(normalizedQuery, ignoreCase = true) }
     }
-    .filter { offer -> merchant == null || offer.merchantName == merchant }
+    .filter { offer -> merchant == null || offer.effectiveMerchantName == merchant }
     .filter { offer -> status.status == null || offer.statusAt(nowMillis, zoneId) == status.status }
     .sortedWith { first, second ->
         val firstExpiry = first.validUntilMillis

@@ -38,7 +38,7 @@ class PersianOfferExtractor(
             else -> null
         }
         return OfferMetadata(
-            merchantName = merchantExtractor.extract(body),
+            merchantName = merchantExtractor.resolve(body, senderAddress = message.address)?.merchantName,
             offerTitle = titleExtractor.extract(body),
             percentageDiscounts = discountValues.percentageDiscounts,
             fixedDiscounts = discountValues.fixedDiscounts,
@@ -48,6 +48,7 @@ class PersianOfferExtractor(
             productCategory = productCategoryExtractor.extract(body),
             confidence = classification.confidence,
             validUntilMillis = expiration?.expiresAt?.toEpochMilli(),
+            applicableCategories = productCategoryExtractor.extractAll(body),
         )
     }
 

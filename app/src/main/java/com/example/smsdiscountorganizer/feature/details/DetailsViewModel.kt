@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.stateIn
 @HiltViewModel
 class DetailsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    offerRepository: OfferRepository,
+    private val offerRepository: OfferRepository,
     private val getOfferSourceText: GetOfferSourceTextUseCase,
 ) : ViewModel() {
     private val sourceSmsId: Long = checkNotNull(savedStateHandle["sourceSmsId"])
@@ -32,6 +32,12 @@ class DetailsViewModel @Inject constructor(
 
     private val _sourceText = MutableStateFlow<OfferSourceTextState>(OfferSourceTextState.Loading)
     val sourceText = _sourceText.asStateFlow()
+
+    fun saveMerchantCorrection(value: String?) {
+        viewModelScope.launch {
+            offerRepository.updateMerchantCorrection(sourceSmsId, value)
+        }
+    }
 
     init {
         viewModelScope.launch {

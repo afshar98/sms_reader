@@ -53,7 +53,7 @@ class OffersViewModel @Inject constructor(
         state.copy(
             isLoading = false,
             offers = offers,
-            merchants = offers.mapNotNull(Offer::merchantName).distinct().sorted(),
+            merchants = offers.mapNotNull(Offer::effectiveMerchantName).distinct().sorted(),
             error = null,
         ).filtered()
     }

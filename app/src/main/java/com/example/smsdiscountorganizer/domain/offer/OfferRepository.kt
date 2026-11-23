@@ -7,5 +7,7 @@ interface OfferRepository {
 
     suspend fun upsertOffers(offers: List<Offer>)
 
+    suspend fun updateMerchantCorrection(sourceSmsId: Long, merchantName: String?)
+
     suspend fun clearAllLocalData()
 }

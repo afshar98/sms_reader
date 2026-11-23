@@ -36,7 +36,7 @@ interface AppPreferenceDao {
 
 @Database(
     entities = [AppPreferenceEntity::class, OfferEntity::class, ScanStateEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters(OfferConverters::class)
@@ -113,6 +113,26 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS index_offers_sourceDateMillis_sourceSmsId " +
                         "ON offers (sourceDateMillis, sourceSmsId)",
+                )
+            }
+        }
+
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE offers ADD COLUMN applicableCategories TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE offers ADD COLUMN merchantCorrection TEXT")
+                db.execSQL(
+                    """UPDATE offers SET applicableCategories = CASE productCategory
+                        WHEN 'Apparel' THEN 'apparel'
+                        WHEN 'Grocery' THEN 'grocery'
+                        WHEN 'Electronics' THEN 'electronics'
+                        WHEN 'Beauty' THEN 'beauty'
+                        WHEN 'Food' THEN 'food'
+                        WHEN 'Home' THEN 'home'
+                        WHEN 'Travel' THEN 'travel'
+                        WHEN 'Entertainment' THEN 'entertainment'
+                        ELSE 'unknown'
+                    END""".trimIndent(),
                 )
             }
         }

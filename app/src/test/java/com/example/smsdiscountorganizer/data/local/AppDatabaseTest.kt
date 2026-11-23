@@ -5,6 +5,8 @@ import android.app.Application
 import androidx.room.Room
 import androidx.sqlite.db.SimpleSQLiteQuery
 import com.example.smsdiscountorganizer.data.repository.RoomOfferRepository
+import com.example.smsdiscountorganizer.data.repository.toDomain
+import com.example.smsdiscountorganizer.domain.offer.OfferCategory
 import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
 import com.example.smsdiscountorganizer.domain.offer.MoneyCurrency
 import com.example.smsdiscountorganizer.domain.offer.ProductCategory
@@ -58,11 +60,26 @@ class AppDatabaseTest {
             minimumPurchase = MonetaryAmount("100000", MoneyCurrency.Rial),
             productCategory = ProductCategory.Electronics,
             extractionConfidence = 0.87,
+            applicableCategories = listOf(OfferCategory.Electronics, OfferCategory.Beauty),
+            merchantCorrection = "بازار مهر",
         )
 
         database.offerDao().upsertAll(listOf(structured))
 
         assertEquals(structured, database.offerDao().observeAll().first().single())
+    }
+
+    @Test
+    fun merchantCorrectionSurvivesOfferRescanUpserts() = runBlocking {
+        val repository = RoomOfferRepository(database)
+        val extracted = offer(48L, "Offer").copy(merchantName = "دیجی‌کالا")
+        repository.upsertOffers(listOf(extracted.toDomain()))
+        repository.updateMerchantCorrection(48L, "بازار مهر")
+
+        repository.upsertOffers(listOf(extracted.toDomain()))
+
+        assertEquals("بازار مهر", repository.observeOffers().first().single().effectiveMerchantName)
+        assertEquals("بازار مهر", repository.observeOffers().first().single().merchantCorrection)
     }
 
     @Test
@@ -113,6 +130,7 @@ class AppDatabaseTest {
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.MIGRATION_2_3,
                 AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
             )
             .allowMainThreadQueries()
             .build()
@@ -162,7 +180,7 @@ class AppDatabaseTest {
         }
 
         database = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
         val migrated = database.offerDao().observeAll().first().single()
@@ -170,9 +188,59 @@ class AppDatabaseTest {
         assertEquals("Spring5", migrated.discountCode)
         assertEquals("15%", migrated.discountValue)
         assertEquals(null, migrated.percentageDiscounts)
+        assertEquals(listOf(OfferCategory.UNKNOWN), migrated.applicableCategories)
 
         database.offerDao().upsertAll(listOf(offer(6L, title = null)))
         assertEquals(null, database.offerDao().observeAll().first().first { it.sourceSmsId == 6L }.offerTitle)
+        database.close()
+        context.deleteDatabase(name)
+        database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+    }
+
+    @Test
+    fun migrationFromVersionFourMapsLegacyCategoryAndAddsCorrectionColumn() = runBlocking {
+        database.close()
+        val name = "migration-v4-test.db"
+        context.deleteDatabase(name)
+        val oldFile = context.getDatabasePath(name)
+        oldFile.parentFile?.mkdirs()
+        SQLiteDatabase.openOrCreateDatabase(oldFile, null).use { oldDatabase ->
+            oldDatabase.execSQL(
+                """CREATE TABLE offers (
+                    sourceSmsId INTEGER NOT NULL, offerTitle TEXT, merchantName TEXT,
+                    discountCode TEXT, discountValue TEXT, percentageDiscounts TEXT,
+                    fixedDiscounts TEXT, freeShipping INTEGER, minimumPurchase TEXT,
+                    productCategory TEXT, extractionConfidence REAL NOT NULL,
+                    validUntilMillis INTEGER, sourceDateMillis INTEGER NOT NULL,
+                    extractedAtMillis INTEGER NOT NULL, PRIMARY KEY(sourceSmsId)
+                )""".trimIndent(),
+            )
+            oldDatabase.execSQL(
+                """INSERT INTO offers (
+                    sourceSmsId, offerTitle, merchantName, productCategory,
+                    extractionConfidence, sourceDateMillis, extractedAtMillis
+                ) VALUES (9, 'پیشنهاد', 'دیجی‌کالا', 'Electronics', 0.9, 100, 200)""".trimIndent(),
+            )
+            oldDatabase.execSQL(
+                "CREATE INDEX index_offers_sourceDateMillis_sourceSmsId ON offers (sourceDateMillis, sourceSmsId)",
+            )
+            oldDatabase.execSQL(
+                "CREATE TABLE scan_state (scanKey TEXT NOT NULL, lastScannedSmsDateMillis INTEGER NOT NULL, lastScannedSmsId INTEGER NOT NULL, lastSuccessfulScanAtMillis INTEGER NOT NULL, PRIMARY KEY(scanKey))",
+            )
+            oldDatabase.execSQL("CREATE TABLE app_preferences (`key` TEXT NOT NULL, enabled INTEGER NOT NULL, PRIMARY KEY(`key`))")
+            oldDatabase.version = 4
+        }
+
+        database = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(AppDatabase.MIGRATION_4_5)
+            .allowMainThreadQueries()
+            .build()
+
+        val migrated = database.offerDao().observeAll().first().single()
+        assertEquals(listOf(OfferCategory.Electronics), migrated.applicableCategories)
+        assertEquals(null, migrated.merchantCorrection)
         database.close()
         context.deleteDatabase(name)
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)

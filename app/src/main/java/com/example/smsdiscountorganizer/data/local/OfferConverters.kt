@@ -4,6 +4,7 @@ import androidx.room.TypeConverter
 import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
 import com.example.smsdiscountorganizer.domain.offer.MoneyCurrency
 import com.example.smsdiscountorganizer.domain.offer.ProductCategory
+import com.example.smsdiscountorganizer.domain.offer.OfferCategory
 
 class OfferConverters {
     @TypeConverter
@@ -35,4 +36,13 @@ class OfferConverters {
 
     @TypeConverter
     fun storageToCategory(value: String?): ProductCategory? = value?.let { runCatching { ProductCategory.valueOf(it) }.getOrNull() }
+
+    @TypeConverter
+    fun categoriesToStorage(values: List<OfferCategory>): String =
+        values.distinctBy(OfferCategory::stableId).joinToString(",") { it.stableId }
+
+    @TypeConverter
+    fun storageToCategories(value: String?): List<OfferCategory> = value.orEmpty()
+        .split(',')
+        .mapNotNull(OfferCategory::fromStableId)
 }

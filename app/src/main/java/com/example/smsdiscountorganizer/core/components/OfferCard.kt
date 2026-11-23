@@ -41,7 +41,7 @@ fun OfferCard(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    offer.merchantName ?: "فروشگاه نامشخص",
+                    offer.effectiveMerchantName ?: "فروشگاه نامشخص",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )

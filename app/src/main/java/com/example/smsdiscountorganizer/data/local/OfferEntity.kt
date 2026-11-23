@@ -2,9 +2,11 @@ package com.example.smsdiscountorganizer.data.local
 
 import androidx.room.Entity
 import androidx.room.Index
+import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
 import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
 import com.example.smsdiscountorganizer.domain.offer.ProductCategory
+import com.example.smsdiscountorganizer.domain.offer.OfferCategory
 
 /** Only extracted offer metadata is persisted; raw SMS fields are intentionally absent. */
 @Entity(
@@ -26,4 +28,7 @@ data class OfferEntity(
     val validUntilMillis: Long?,
     val sourceDateMillis: Long,
     val extractedAtMillis: Long,
+    @ColumnInfo(defaultValue = "''")
+    val applicableCategories: List<OfferCategory> = productCategory?.let { OfferCategory.fromLegacy(it) }?.let(::listOf).orEmpty(),
+    val merchantCorrection: String? = null,
 )

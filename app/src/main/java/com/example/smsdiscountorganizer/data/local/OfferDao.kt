@@ -14,6 +14,9 @@ interface OfferDao {
     @Query("SELECT * FROM offers WHERE sourceSmsId = :sourceSmsId LIMIT 1")
     suspend fun getBySourceSmsId(sourceSmsId: Long): OfferEntity?
 
+    @Query("UPDATE offers SET merchantCorrection = :merchantName WHERE sourceSmsId = :sourceSmsId")
+    suspend fun setMerchantCorrection(sourceSmsId: Long, merchantName: String?)
+
     @Query("SELECT COUNT(*) FROM offers")
     suspend fun count(): Int
 
