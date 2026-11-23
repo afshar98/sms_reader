@@ -8,6 +8,8 @@ import com.example.smsdiscountorganizer.domain.scan.ScanRepository
 import com.example.smsdiscountorganizer.domain.scan.ScanProgress
 import com.example.smsdiscountorganizer.domain.scan.ScanResult
 import com.example.smsdiscountorganizer.domain.scan.ScanSmsUseCase
+import com.example.smsdiscountorganizer.domain.scan.SmsDateRangePreset
+import com.example.smsdiscountorganizer.domain.scan.SmsDateRangeSelection
 import com.example.smsdiscountorganizer.feature.offers.OfferStatus
 import com.example.smsdiscountorganizer.feature.offers.statusAt
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 data class DashboardUiState(
     val isLoading: Boolean = true,
@@ -35,6 +38,7 @@ data class DashboardUiState(
     val progress: ScanProgress = ScanProgress(),
     val message: String? = null,
     val readError: String? = null,
+    val dateRangeSelection: SmsDateRangeSelection = SmsDateRangeSelection(),
 )
 
 @HiltViewModel
@@ -47,6 +51,7 @@ class DashboardViewModel @Inject constructor(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+    private var scanJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -63,6 +68,7 @@ class DashboardViewModel @Inject constructor(
                     lastScanAtMillis = scan?.lastSuccessfulScanAtMillis,
                     isScanning = progress.isScanning,
                     progress = progress,
+                    dateRangeSelection = _uiState.value.dateRangeSelection,
                 )
             }.catch {
                 _uiState.update { it.copy(isLoading = false, message = "بارگذاری پیشنهادها ممکن نشد.") }
@@ -70,16 +76,20 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    fun cancelScan() {
+        scanJob?.cancel(CancellationException("User cancelled Inbox scan"))
+    }
+
     fun scanNow(fullRescan: Boolean = false) {
         if (_uiState.value.isScanning) return
-        viewModelScope.launch {
+        scanJob = viewModelScope.launch {
             _uiState.update { it.copy(isScanning = true, message = null, readError = null) }
             try {
-                when (val result = scanSms.scan(fullRescan)) {
+                when (val result = scanSms.scan(fullRescan, _uiState.value.dateRangeSelection)) {
                     is ScanResult.Success -> _uiState.update {
                         it.copy(
                             isScanning = false,
-                            message = "بررسی تمام شد؛ ${result.offersUpserted} پیشنهاد ذخیره شد.",
+                            message = "بررسی تمام شد؛ ${result.messagesScanned} پیام دیده شد، ${result.messagesUnchanged} پیام تغییری نداشت و ${result.offersUpserted} پیشنهاد درج یا به‌روزرسانی شد.",
                             readError = null,
                         )
                     }
@@ -95,6 +105,22 @@ class DashboardViewModel @Inject constructor(
             }
         }
     }
+
+    fun selectDateRange(preset: SmsDateRangePreset) {
+        _uiState.update { it.copy(dateRangeSelection = SmsDateRangeSelection(preset = preset)) }
+    }
+
+    fun selectCustomDateRange(startDate: java.time.LocalDate, endDate: java.time.LocalDate) {
+        _uiState.update {
+            it.copy(
+                dateRangeSelection = SmsDateRangeSelection(
+                    preset = SmsDateRangePreset.CUSTOM,
+                    customStartDate = startDate,
+                    customEndDate = endDate,
+                ),
+            )
+        }
+    }
 }
 
 private fun ScanResult.Reason.toUserMessage(): String = when (this) {
@@ -102,4 +128,5 @@ private fun ScanResult.Reason.toUserMessage(): String = when (this) {
     ScanResult.Reason.PermissionDenied -> "مجوز خواندن پیامک فعال نیست."
     ScanResult.Reason.OfferExtractionFailed -> "پردازش پیشنهادها کامل نشد. دوباره تلاش کنید."
     ScanResult.Reason.PersistenceFailed -> "ذخیره‌سازی محلی کامل نشد."
+    ScanResult.Reason.InvalidDateRange -> "بازه انتخابی معتبر نیست. تاریخ شروع و پایان را بررسی کنید."
 }

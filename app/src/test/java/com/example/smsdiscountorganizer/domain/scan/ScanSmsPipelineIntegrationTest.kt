@@ -59,7 +59,7 @@ class ScanSmsPipelineIntegrationTest {
     }
 
     @Test
-    fun repeatedScanIsIncrementalAndNewOffersUpsertWithoutDuplicates() = runBlocking {
+    fun repeatedScanRevisitsWindowButOnlyProcessesNewRowsWithoutDuplicates() = runBlocking {
         val source = FakeFlowSmsDataSource(listOf(message(1, "۲۰٪ تخفیف کد FIRST20")))
         val repository = InMemoryScanRepository()
         val useCase = scanner(source, repository)
@@ -68,12 +68,59 @@ class ScanSmsPipelineIntegrationTest {
         source.messages += message(2, "۳۰٪ تخفیف کد NEXT30")
         val second = useCase.scan()
 
-        assertEquals(1, (second as ScanResult.Success).messagesScanned)
+        assertEquals(2, (second as ScanResult.Success).messagesScanned)
+        assertEquals(1, second.messagesUnchanged)
+        assertEquals(1, second.offersUpserted)
         assertEquals(listOf(1L, 2L), repository.offers.keys.sorted())
         assertEquals(
-            listOf(null, null, SmsCursor(message(1, "").dateMillis, 1L), SmsCursor(message(1, "").dateMillis, 1L)),
+            listOf(null, null, SmsCursor(message(1, "").dateMillis, 1L), null),
             source.readAfter,
         )
+    }
+
+    @Test
+    fun editedMessageWithAnExistingProviderIdIsReprocessedAndUpdatesItsOffer() = runBlocking {
+        val source = FakeFlowSmsDataSource(listOf(message(7, "۲۰٪ تخفیف کد تخفیف OLD20")))
+        val repository = InMemoryScanRepository()
+        val useCase = scanner(source, repository)
+        useCase.scan()
+        source.messages[0] = message(7, "۴۰٪ تخفیف کد تخفیف NEW40")
+
+        val result = useCase.scan() as ScanResult.Success
+
+        assertEquals(1, result.messagesScanned)
+        assertEquals(0, result.messagesUnchanged)
+        assertEquals("NEW40", repository.offers.getValue(7L).discountCode)
+        assertEquals(listOf(40.0), repository.offers.getValue(7L).percentageDiscounts)
+    }
+
+    @Test
+    fun editedMessageThatStopsBeingAnOfferRemovesOnlyItsDerivedOffer() = runBlocking {
+        val source = FakeFlowSmsDataSource(listOf(message(8, "۲۰٪ تخفیف کد تخفیف OLD20")))
+        val repository = InMemoryScanRepository()
+        val useCase = scanner(source, repository)
+        useCase.scan()
+        source.messages[0] = message(8, "سلام، روز خوبی داشته باشید")
+
+        useCase.scan()
+
+        assertTrue(repository.offers.isEmpty())
+        assertEquals(false, repository.processedRecords.single().producedOffer)
+    }
+
+    @Test
+    fun completedRangeReconciliationRemovesRowsDeletedOutsideTheApp() = runBlocking {
+        val source = FakeFlowSmsDataSource(listOf(message(9, "۲۰٪ تخفیف کد تخفیف KEEP20")))
+        val repository = InMemoryScanRepository()
+        val useCase = scanner(source, repository)
+        useCase.scan()
+        source.messages.clear()
+
+        val result = useCase.scan() as ScanResult.Success
+
+        assertEquals(0, result.messagesScanned)
+        assertTrue(repository.offers.isEmpty())
+        assertTrue(repository.processedRecords.isEmpty())
     }
 
     @Test
@@ -86,9 +133,10 @@ class ScanSmsPipelineIntegrationTest {
 
         val result = useCase.scan() as ScanResult.Success
 
-        assertEquals(1, result.messagesScanned)
+        assertEquals(2, result.messagesScanned)
+        assertEquals(1, result.messagesUnchanged)
         assertNull(repository.offers.getValue(1L).merchantName)
-        assertEquals(listOf(null, null, SmsCursor(message(1, "").dateMillis, 1L), SmsCursor(message(1, "").dateMillis, 1L)), source.readAfter)
+        assertEquals(listOf(null, null, SmsCursor(message(1, "").dateMillis, 1L), null), source.readAfter)
     }
 
     @Test
@@ -104,7 +152,7 @@ class ScanSmsPipelineIntegrationTest {
         assertEquals(1, (result as ScanResult.Success).offersUpserted)
         assertEquals(listOf(5L), repository.offers.keys.toList())
         assertEquals("SAME40", repository.offers.getValue(5L).discountCode)
-        assertEquals(listOf(null, null, null, null), source.readAfter)
+        assertEquals(listOf(null, null, null), source.readAfter)
     }
 
     @Test
@@ -321,7 +369,7 @@ class ScanSmsPipelineIntegrationTest {
             override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
                 reads += 1
                 emit(current)
-                if (cancelProcessingPass && reads == 4) {
+                if (cancelProcessingPass && reads == 3) {
                     processingPassStarted.complete(Unit)
                     awaitCancellation()
                 }
@@ -388,6 +436,8 @@ class ScanSmsPipelineIntegrationTest {
         val offers = linkedMapOf<Long, Offer>()
         private var profiles: List<SenderMerchantProfile> = emptyList()
         private val scanState = MutableStateFlow<ScanState?>(null)
+        private val processed = linkedMapOf<Long, ProcessedSmsRecord>()
+        val processedRecords: List<ProcessedSmsRecord> get() = processed.values.toList()
         val state: ScanState? get() = scanState.value
 
         override fun observeScanState(): Flow<ScanState?> = scanState
@@ -400,8 +450,22 @@ class ScanSmsPipelineIntegrationTest {
 
         override suspend fun getSenderProfiles(): List<SenderMerchantProfile> = profiles
 
-        override suspend fun commitScan(offers: List<Offer>, state: ScanState) {
+        override suspend fun getProcessedSms(dateRange: SmsDateRange?): List<ProcessedSmsRecord> = processed.values.toList()
+
+        override suspend fun commitScan(
+            offers: List<Offer>,
+            state: ScanState,
+            processedMessages: List<ProcessedSmsRecord>,
+            deleteOfferIds: List<Long>,
+            reconciliation: ScanReconciliation?,
+        ) {
             offers.forEach { this.offers[it.sourceSmsId] = it }
+            processedMessages.forEach { processed[it.smsId] = it }
+            deleteOfferIds.forEach { this.offers.remove(it) }
+            reconciliation?.let { r ->
+                this.offers.keys.removeAll { id -> id !in r.observedSmsIds }
+                processed.keys.removeAll { id -> id !in r.observedSmsIds }
+            }
             scanState.value = state
             onCommit()
         }

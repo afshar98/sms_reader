@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 fun SmsPermissionScanCard(
     isScanning: Boolean,
     onScan: () -> Unit,
+    onCancel: () -> Unit = {},
     onFullRescan: (() -> Unit)? = null,
     onPermissionStatus: (SmsPermissionStatus) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -66,11 +67,14 @@ fun SmsPermissionScanCard(
             when (status) {
                 SmsPermissionStatus.Granted -> {
                     Button(onClick = onScan, enabled = !isScanning) {
-                        Text(if (isScanning) "در حال بررسی صندوق…" else "بررسی پیامک‌های جدید")
+                        Text(if (isScanning) "در حال بررسی صندوق…" else "بررسی بازه انتخابی")
+                    }
+                    if (isScanning) {
+                        OutlinedButton(onClick = onCancel) { Text("لغو بررسی") }
                     }
                     onFullRescan?.let { rescan ->
                         OutlinedButton(onClick = rescan, enabled = !isScanning) {
-                            Text("بازاسکن کامل صندوق")
+                            Text("بازاسکن کامل بازه")
                         }
                     }
                 }

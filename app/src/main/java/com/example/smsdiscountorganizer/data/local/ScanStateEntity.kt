@@ -11,4 +11,5 @@ data class ScanStateEntity(
     val lastSuccessfulScanAtMillis: Long,
     val senderProfileFingerprint: String = "",
     val offersSenderProfileFingerprint: String = "",
+    val offersSenderResolutionFingerprint: String = "",
 )

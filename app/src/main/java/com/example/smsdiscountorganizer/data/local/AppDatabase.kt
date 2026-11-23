@@ -35,8 +35,8 @@ interface AppPreferenceDao {
 }
 
 @Database(
-    entities = [AppPreferenceEntity::class, OfferEntity::class, ScanStateEntity::class, SenderMerchantProfileEntity::class],
-    version = 7,
+    entities = [AppPreferenceEntity::class, OfferEntity::class, ScanStateEntity::class, SenderMerchantProfileEntity::class, ProcessedSmsEntity::class],
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters(OfferConverters::class)
@@ -48,6 +48,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun scanStateDao(): ScanStateDao
 
     abstract fun senderMerchantProfileDao(): SenderMerchantProfileDao
+
+    abstract fun processedSmsDao(): ProcessedSmsDao
 
     companion object {
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
@@ -166,6 +168,30 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_6_7: Migration = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE offers ADD COLUMN campaignBrand TEXT")
+            }
+        }
+
+        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS processed_sms (
+                        smsId INTEGER NOT NULL,
+                        sourceDateMillis INTEGER NOT NULL,
+                        contentFingerprint TEXT NOT NULL,
+                        pipelineVersion INTEGER NOT NULL,
+                        producedOffer INTEGER NOT NULL,
+                        PRIMARY KEY(smsId)
+                    )""".trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_processed_sms_sourceDateMillis ON processed_sms (sourceDateMillis)",
+                )
+            }
+        }
+
+        val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE scan_state ADD COLUMN offersSenderResolutionFingerprint TEXT NOT NULL DEFAULT ''")
             }
         }
     }

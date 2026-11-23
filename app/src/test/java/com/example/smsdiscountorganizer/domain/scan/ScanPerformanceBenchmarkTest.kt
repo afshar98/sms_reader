@@ -97,7 +97,8 @@ class ScanPerformanceBenchmarkTest {
                 val repeatStartedAt = System.nanoTime()
                 val repeated = useCase.scan() as ScanResult.Success
                 val repeatElapsedNanos = System.nanoTime() - repeatStartedAt
-                assertEquals(0, repeated.messagesScanned)
+                assertEquals(size, repeated.messagesScanned)
+                assertEquals(size, repeated.messagesUnchanged)
                 assertEquals(offerCount, repository.offerCount)
                 println(
                     "PERF_REPEAT n=$size duration_ms=${repeatElapsedNanos / 1_000_000} " +
@@ -192,6 +193,7 @@ class ScanPerformanceBenchmarkTest {
         private val offers = linkedMapOf<Long, Offer>()
         private val scanState = MutableStateFlow<ScanState?>(null)
         private var profiles = emptyList<SenderMerchantProfile>()
+        private val processed = linkedMapOf<Long, ProcessedSmsRecord>()
         val offerCount: Int get() = offers.size
 
         override fun observeScanState(): Flow<ScanState?> = scanState
@@ -201,8 +203,21 @@ class ScanPerformanceBenchmarkTest {
             scanState.value = (scanState.value ?: ScanState(null, 0L)).copy(senderProfileFingerprint = fingerprint)
         }
         override suspend fun getSenderProfiles(): List<SenderMerchantProfile> = profiles
-        override suspend fun commitScan(offers: List<Offer>, state: ScanState) {
+        override suspend fun getProcessedSms(dateRange: SmsDateRange?): List<ProcessedSmsRecord> = processed.values.toList()
+        override suspend fun commitScan(
+            offers: List<Offer>,
+            state: ScanState,
+            processedMessages: List<ProcessedSmsRecord>,
+            deleteOfferIds: List<Long>,
+            reconciliation: ScanReconciliation?,
+        ) {
             offers.forEach { this.offers[it.sourceSmsId] = it }
+            processedMessages.forEach { processed[it.smsId] = it }
+            deleteOfferIds.forEach { this.offers.remove(it) }
+            reconciliation?.let { r ->
+                this.offers.keys.removeAll { id -> id !in r.observedSmsIds }
+                processed.keys.removeAll { id -> id !in r.observedSmsIds }
+            }
             scanState.value = state
         }
     }

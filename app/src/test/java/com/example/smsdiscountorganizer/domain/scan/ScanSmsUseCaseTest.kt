@@ -43,11 +43,11 @@ class ScanSmsUseCaseTest {
         val second = useCase.scan()
 
         assertEquals(ScanResult.Success(3, 3, scannedAt.toEpochMilli()), first)
-        assertEquals(ScanResult.Success(0, 0, scannedAt.toEpochMilli()), second)
+        assertEquals(ScanResult.Success(3, 0, scannedAt.toEpochMilli(), messagesUnchanged = 3), second)
         assertEquals(listOf(10L, 11L, 12L), offers.offers.keys.sorted())
         assertEquals(SmsCursor(50L, 12L), scans.state?.cursor)
         assertEquals(
-            listOf(null, null, SmsCursor(50L, 12L), SmsCursor(50L, 12L)),
+            listOf(null, null, SmsCursor(50L, 12L), null),
             source.cursors,
         )
         assertEquals(10L, offers.offers.getValue(10L).sourceSmsId)
@@ -126,6 +126,7 @@ class ScanSmsUseCaseTest {
         initialState: ScanState? = null,
     ) : ScanRepository {
         private var profiles: List<SenderMerchantProfile> = emptyList()
+        private val processed = linkedMapOf<Long, ProcessedSmsRecord>()
         var state = initialState
             private set
 
@@ -140,8 +141,22 @@ class ScanSmsUseCaseTest {
 
         override suspend fun getSenderProfiles(): List<SenderMerchantProfile> = profiles
 
-        override suspend fun commitScan(offers: List<Offer>, state: ScanState) {
+        override suspend fun getProcessedSms(dateRange: SmsDateRange?): List<ProcessedSmsRecord> = processed.values.toList()
+
+        override suspend fun commitScan(
+            offers: List<Offer>,
+            state: ScanState,
+            processedMessages: List<ProcessedSmsRecord>,
+            deleteOfferIds: List<Long>,
+            reconciliation: ScanReconciliation?,
+        ) {
             this.offers.upsertOffers(offers)
+            processedMessages.forEach { processed[it.smsId] = it }
+            deleteOfferIds.forEach { this.offers.offers.remove(it) }
+            reconciliation?.let { r ->
+                this.offers.offers.keys.removeAll { id -> id !in r.observedSmsIds }
+                processed.keys.removeAll { id -> id !in r.observedSmsIds }
+            }
             this.state = state
         }
     }

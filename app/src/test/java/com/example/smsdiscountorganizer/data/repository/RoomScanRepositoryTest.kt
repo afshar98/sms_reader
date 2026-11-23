@@ -5,6 +5,9 @@ import com.example.smsdiscountorganizer.data.local.AppDatabase
 import com.example.smsdiscountorganizer.domain.offer.Offer
 import com.example.smsdiscountorganizer.domain.merchant.SenderMerchantProfile
 import com.example.smsdiscountorganizer.domain.scan.ScanState
+import com.example.smsdiscountorganizer.domain.scan.ProcessedSmsRecord
+import com.example.smsdiscountorganizer.domain.scan.SmsDateRange
+import com.example.smsdiscountorganizer.domain.scan.ScanReconciliation
 import com.example.smsdiscountorganizer.domain.sms.SmsCursor
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -88,6 +91,51 @@ class RoomScanRepositoryTest {
         assertEquals(listOf(profile), repository.getSenderProfiles())
         assertEquals("profile-version", repository.getScanState()?.senderProfileFingerprint)
         assertEquals(3, database.senderMerchantProfileDao().getAll().single().supportingMessages)
+    }
+
+    @Test
+    fun processedSmsLedgerStoresOnlyFingerprintsAndReconcilesChangedRowsTransactionally() = runBlocking {
+        val first = ProcessedSmsRecord(11L, 100L, "a".repeat(64), 1, true)
+        repository.commitScan(
+            offers = listOf(offer(11L)),
+            state = ScanState(SmsCursor(100L, 11L), 200L),
+            processedMessages = listOf(first),
+        )
+        val updated = first.copy(contentFingerprint = "b".repeat(64), producedOffer = false)
+        repository.commitScan(
+            offers = emptyList(),
+            state = ScanState(SmsCursor(100L, 11L), 300L),
+            processedMessages = listOf(updated),
+            deleteOfferIds = listOf(11L),
+        )
+
+        assertEquals(listOf(updated), repository.getProcessedSms(SmsDateRange(0L, 500L)))
+        assertEquals(0, database.offerDao().count())
+        val columns = database.query(androidx.sqlite.db.SimpleSQLiteQuery("PRAGMA table_info(processed_sms)")).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
+        }
+        assertEquals(listOf("smsId", "sourceDateMillis", "contentFingerprint", "pipelineVersion", "producedOffer"), columns)
+    }
+
+    @Test
+    fun completedRangeReconciliationRemovesMissingDerivedRowsButKeepsRowsOutsideRange() = runBlocking {
+        repository.commitScan(
+            offers = listOf(offer(1L).copy(sourceDateMillis = 100L), offer(2L).copy(sourceDateMillis = 500L)),
+            state = ScanState(null, 0L),
+            processedMessages = listOf(
+                ProcessedSmsRecord(1L, 100L, "a".repeat(64), 1, true),
+                ProcessedSmsRecord(2L, 500L, "b".repeat(64), 1, true),
+            ),
+        )
+
+        repository.commitScan(
+            offers = emptyList(),
+            state = ScanState(null, 1L),
+            reconciliation = ScanReconciliation(SmsDateRange(0L, 200L), observedSmsIds = emptySet()),
+        )
+
+        assertEquals(listOf(2L), database.offerDao().observeAll().first().map { it.sourceSmsId })
+        assertEquals(listOf(2L), repository.getProcessedSms(null).map(ProcessedSmsRecord::smsId))
     }
 
     @Test

@@ -63,6 +63,7 @@ class SettingsViewModel @Inject constructor(
                         ScanResult.Reason.PermissionDenied -> "مجوز خواندن پیامک فعال نیست."
                         ScanResult.Reason.OfferExtractionFailed -> "پردازش پیشنهادها کامل نشد. دوباره تلاش کنید."
                         ScanResult.Reason.PersistenceFailed -> "ذخیره‌سازی محلی کامل نشد."
+                        ScanResult.Reason.InvalidDateRange -> "بازه انتخابی معتبر نیست."
                     }
                 }
                 _uiState.update { it.copy(isScanning = false, scanMessage = message) }

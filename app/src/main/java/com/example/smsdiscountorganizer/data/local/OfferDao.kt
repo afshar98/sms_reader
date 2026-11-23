@@ -20,10 +20,19 @@ interface OfferDao {
     @Query("SELECT COUNT(*) FROM offers")
     suspend fun count(): Int
 
+    @Query("SELECT sourceSmsId FROM offers WHERE sourceDateMillis >= :startInclusive AND sourceDateMillis < :endExclusive")
+    suspend fun getSourceSmsIdsInRange(startInclusive: Long, endExclusive: Long): List<Long>
+
+    @Query("SELECT sourceSmsId FROM offers")
+    suspend fun getAllSourceSmsIds(): List<Long>
+
     @Upsert
     @Transaction
     suspend fun upsertAll(offers: List<OfferEntity>)
 
     @Query("DELETE FROM offers")
     suspend fun deleteAll()
+
+    @Query("DELETE FROM offers WHERE sourceSmsId IN (:sourceSmsIds)")
+    suspend fun deleteBySourceSmsIds(sourceSmsIds: List<Long>)
 }

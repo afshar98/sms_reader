@@ -9,4 +9,6 @@ data class ScanState(
     val offersSenderProfileFingerprint: String = "",
     /** Most recently rebuilt sender snapshot, which may be newer than the offer snapshot. */
     val senderProfileFingerprint: String = "",
+    /** Stable resolved merchant mapping used to decide whether prior offers need reprocessing. */
+    val offersSenderResolutionFingerprint: String = "",
 )

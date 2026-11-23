@@ -8,17 +8,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -29,8 +40,13 @@ import com.example.smsdiscountorganizer.core.format.PersianNumberFormatter
 import com.example.smsdiscountorganizer.core.permission.SmsPermissionScanCard
 import java.time.Clock
 import java.time.ZoneId
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import com.example.smsdiscountorganizer.domain.scan.SmsDateRangePreset
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun DashboardScreen(
     viewModel: DashboardViewModel,
     clock: Clock,
@@ -41,6 +57,7 @@ fun DashboardScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val now = clock.millis()
     val listState = rememberLazyListState()
+    var showCustomRangePicker by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
@@ -68,16 +85,42 @@ fun DashboardScreen(
                 }
             }
             item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("بازه پیام‌ها", style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SmsDateRangePreset.entries.forEach { preset ->
+                            FilterChip(
+                                selected = state.dateRangeSelection.preset == preset,
+                                onClick = {
+                                    if (preset == SmsDateRangePreset.CUSTOM) showCustomRangePicker = true
+                                    else viewModel.selectDateRange(preset)
+                                },
+                                label = { Text(preset.label()) },
+                            )
+                        }
+                    }
+                    if (state.dateRangeSelection.preset == SmsDateRangePreset.CUSTOM) {
+                        val start = state.dateRangeSelection.customStartDate
+                        val end = state.dateRangeSelection.customEndDate
+                        Text(if (start != null && end != null) "از $start تا $end" else "یک بازهٔ دلخواه انتخاب کنید")
+                    }
+                }
+            }
+            item {
                 SmsPermissionScanCard(
                     isScanning = state.isScanning,
                     onScan = { viewModel.scanNow() },
+                    onCancel = viewModel::cancelScan,
                     onFullRescan = { viewModel.scanNow(fullRescan = true) },
                 )
             }
             if (state.progress.isScanning) {
                 item {
                     Text(
-                        PersianNumberFormatter.formatNumericText("${state.progress.processedMessages} پیام بررسی شد؛ ${state.progress.offersFound} پیشنهاد پیدا شد."),
+                        PersianNumberFormatter.formatNumericText("${state.progress.processedMessages} پیام بررسی شد؛ ${state.progress.offersFound} پیشنهاد پیدا شد؛ ${state.progress.phase.label()}"),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -130,7 +173,62 @@ fun DashboardScreen(
             item { Box(Modifier.padding(bottom = 20.dp)) }
         }
     }
+
+    if (showCustomRangePicker) {
+        val pickerState = androidx.compose.material3.rememberDateRangePickerState(
+            initialSelectedStartDateMillis = state.dateRangeSelection.customStartDate?.toEpochMilliUtc(),
+            initialSelectedEndDateMillis = state.dateRangeSelection.customEndDate?.toEpochMilliUtc(),
+        )
+        AlertDialog(
+            onDismissRequest = { showCustomRangePicker = false },
+            title = { Text("بازه دلخواه") },
+            text = {
+                DateRangePicker(
+                    state = pickerState,
+                    modifier = Modifier.heightIn(max = 560.dp),
+                    title = null,
+                    showModeToggle = false,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val start = pickerState.selectedStartDateMillis?.toLocalDateUtc()
+                    val end = pickerState.selectedEndDateMillis?.toLocalDateUtc()
+                    if (start != null && end != null) viewModel.selectCustomDateRange(start, end)
+                    showCustomRangePicker = false
+                }, enabled = pickerState.selectedStartDateMillis != null && pickerState.selectedEndDateMillis != null) {
+                    Text("انتخاب")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomRangePicker = false }) { Text("لغو") }
+            },
+        )
+    }
 }
+
+private fun SmsDateRangePreset.label(): String = when (this) {
+    SmsDateRangePreset.LAST_7_DAYS -> "۷ روز"
+    SmsDateRangePreset.LAST_30_DAYS -> "۳۰ روز"
+    SmsDateRangePreset.LAST_2_CALENDAR_MONTHS -> "۲ ماه (پیش‌فرض)"
+    SmsDateRangePreset.LAST_3_CALENDAR_MONTHS -> "۳ ماه"
+    SmsDateRangePreset.CUSTOM -> "دلخواه"
+    SmsDateRangePreset.ALL_MESSAGES -> "همه پیام‌ها"
+}
+
+private fun com.example.smsdiscountorganizer.domain.scan.ScanPhase.label(): String = when (this) {
+    com.example.smsdiscountorganizer.domain.scan.ScanPhase.IDLE -> "آماده"
+    com.example.smsdiscountorganizer.domain.scan.ScanPhase.READING -> "خواندن صندوق"
+    com.example.smsdiscountorganizer.domain.scan.ScanPhase.PROFILING -> "تحلیل فرستنده‌ها"
+    com.example.smsdiscountorganizer.domain.scan.ScanPhase.PROCESSING -> "تحلیل پیام‌ها"
+    com.example.smsdiscountorganizer.domain.scan.ScanPhase.SAVING -> "ذخیره محلی"
+    com.example.smsdiscountorganizer.domain.scan.ScanPhase.COMPLETED -> "تمام شد"
+    com.example.smsdiscountorganizer.domain.scan.ScanPhase.FAILED -> "ناموفق"
+    com.example.smsdiscountorganizer.domain.scan.ScanPhase.CANCELLED -> "لغو شد"
+}
+
+private fun LocalDate.toEpochMilliUtc(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+private fun Long.toLocalDateUtc(): LocalDate = Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
 
 @Composable
 private fun SummaryCard(label: String, count: Int, modifier: Modifier = Modifier) {

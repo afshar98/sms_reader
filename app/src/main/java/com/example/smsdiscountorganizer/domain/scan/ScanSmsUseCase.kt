@@ -10,6 +10,8 @@ import com.example.smsdiscountorganizer.engine.OfferExtractor
 import com.example.smsdiscountorganizer.engine.SenderIdNormalizer
 import com.example.smsdiscountorganizer.engine.SenderMerchantProfileBuilder
 import java.time.Clock
+import java.time.ZoneId
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -29,19 +31,23 @@ class ScanSmsUseCase @Inject constructor(
     private val offerExtractor: OfferExtractor,
     private val scanRepository: ScanRepository,
     private val clock: Clock,
+    private val zoneId: ZoneId = ZoneId.systemDefault(),
 ) {
     private val scanMutex = Mutex()
     private val _progress = MutableStateFlow(ScanProgress())
     val progress: StateFlow<ScanProgress> = _progress.asStateFlow()
 
-    suspend fun scan(fullRescan: Boolean = false): ScanResult = scanMutex.withLock {
+    suspend fun scan(
+        fullRescan: Boolean = false,
+        selection: SmsDateRangeSelection = SmsDateRangeSelection(),
+    ): ScanResult = scanMutex.withLock {
         _progress.value = ScanProgress(
             isScanning = true,
             isFullRescan = fullRescan,
             phase = ScanPhase.READING,
         )
         try {
-            scanInbox(fullRescan)
+            scanInbox(fullRescan, selection)
         } catch (cancellation: CancellationException) {
             _progress.value = _progress.value.copy(isScanning = false, phase = ScanPhase.CANCELLED)
             throw cancellation
@@ -55,7 +61,10 @@ class ScanSmsUseCase @Inject constructor(
         }
     }
 
-    private suspend fun scanInbox(fullRescan: Boolean): ScanResult {
+    private suspend fun scanInbox(fullRescan: Boolean, selection: SmsDateRangeSelection): ScanResult {
+        val resolution = selection.resolve(clock, zoneId) as? SmsDateRangeResolution.Valid
+            ?: return fail(ScanResult.Reason.InvalidDateRange)
+        val dateRange = resolution.range
         val storedState = try {
             scanRepository.getScanState()
         } catch (cancellation: CancellationException) {
@@ -67,7 +76,7 @@ class ScanSmsUseCase @Inject constructor(
         val lastSuccessfulScanAt = storedState?.lastSuccessfulScanAtMillis ?: 0L
         val profileBuilder = SenderMerchantProfileBuilder()
         val hasPersistedProfileSnapshot = storedState?.senderProfileFingerprint?.isNotBlank() == true
-        val previousProfiles = if (!fullRescan && storedCursor != null && hasPersistedProfileSnapshot) {
+        val previousProfiles = if (storedCursor != null && hasPersistedProfileSnapshot) {
             try {
                 scanRepository.getSenderProfiles()
             } catch (cancellation: CancellationException) {
@@ -83,8 +92,13 @@ class ScanSmsUseCase @Inject constructor(
         var profiledMessages = 0
         _progress.value = _progress.value.copy(phase = ScanPhase.PROFILING)
         try {
+            if (fullRescan && hasPersistedProfileSnapshot) {
+                // A full offer rescan must not replace the broader, previously learned sender
+                // snapshot with evidence from only the currently selected date window.
+                profiledMessages = 0
+            } else {
             withContext(Dispatchers.Default) {
-                smsDataSource.readInbox(after = storedCursor.takeIf { canBuildProfilesIncrementally }).collect { message ->
+                smsDataSource.readInbox(after = storedCursor.takeIf { canBuildProfilesIncrementally }, dateRange = dateRange).collect { message ->
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     profiledMessages += 1
                     try {
@@ -99,6 +113,7 @@ class ScanSmsUseCase @Inject constructor(
                     }
                 }
             }
+            }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: SecurityException) {
@@ -108,9 +123,10 @@ class ScanSmsUseCase @Inject constructor(
         }
         _progress.value = _progress.value.copy(profiledMessages = profiledMessages)
 
-        val senderProfiles = profileBuilder.build()
+        val senderProfiles = if (fullRescan && hasPersistedProfileSnapshot) previousProfiles else profileBuilder.build()
         val profileFingerprint = SenderMerchantProfileBuilder.profileFingerprint(senderProfiles)
         val previousOfferProfileFingerprint = storedState?.offersSenderProfileFingerprint.orEmpty()
+        val resolutionFingerprint = senderResolutionFingerprint(senderProfiles)
         val profilesChanged = storedState?.senderProfileFingerprint != profileFingerprint
         if (profilesChanged) {
             try {
@@ -124,10 +140,10 @@ class ScanSmsUseCase @Inject constructor(
         val profileResolutionChanged =
             profileResolutionSignature(previousProfiles) != profileResolutionSignature(senderProfiles)
         val profileSnapshotMissing = storedState != null && !hasPersistedProfileSnapshot
-        val offersWereProcessedAgainstStaleProfiles = storedState != null &&
-            previousOfferProfileFingerprint != storedState.senderProfileFingerprint
+        val offersWereProcessedAgainstStaleResolution = storedState != null &&
+            storedState.offersSenderResolutionFingerprint != resolutionFingerprint
         val reprocessAll = fullRescan || storedState == null || profileSnapshotMissing ||
-            profileResolutionChanged || offersWereProcessedAgainstStaleProfiles
+            profileResolutionChanged || offersWereProcessedAgainstStaleResolution
         if (reprocessAll && previousOfferProfileFingerprint == profileFingerprint) {
             try {
                 scanRepository.commitScan(
@@ -137,6 +153,7 @@ class ScanSmsUseCase @Inject constructor(
                         lastSuccessfulScanAtMillis = lastSuccessfulScanAt,
                         offersSenderProfileFingerprint = "",
                         senderProfileFingerprint = profileFingerprint,
+                        offersSenderResolutionFingerprint = "",
                     ),
                 )
             } catch (cancellation: CancellationException) {
@@ -145,17 +162,30 @@ class ScanSmsUseCase @Inject constructor(
                 return fail(ScanResult.Reason.PersistenceFailed)
             }
         }
-        val startingCursor = if (reprocessAll) null else storedCursor
+        // A provider-ID high-water mark misses imported rows with older IDs and edits to existing
+        // messages. Revisit the selected date window and skip unchanged rows by body-free hash.
+        val startingCursor: SmsCursor? = null
+        val previousProcessedMessages = try {
+            scanRepository.getProcessedSms(dateRange).associateBy(ProcessedSmsRecord::smsId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            return fail(ScanResult.Reason.PersistenceFailed)
+        }
         val profilesBySender = senderProfiles.associateBy(SenderMerchantProfile::senderFingerprint)
         var lastCursor = startingCursor
         var lastSeenSmsId = startingCursor?.smsId
         var processedMessages = 0
         var offersFound = 0
         var malformedMessages = 0
+        var unchangedMessages = 0
+        val observedSmsIds = LinkedHashSet<Long>()
         var batchMessageCount = 0
         var lastProgressUpdateNanos = 0L
         val extractedAtMillis = clock.millis()
         val batchOffers = ArrayList<Offer>(SCAN_BATCH_SIZE)
+        val batchProcessedMessages = ArrayList<ProcessedSmsRecord>(SCAN_BATCH_SIZE)
+        val batchDeleteOfferIds = ArrayList<Long>()
 
         suspend fun saveBatch() {
             if (batchMessageCount == 0) return
@@ -174,7 +204,10 @@ class ScanSmsUseCase @Inject constructor(
                         lastSuccessfulScanAtMillis = lastSuccessfulScanAt,
                         offersSenderProfileFingerprint = if (reprocessAll) "" else previousOfferProfileFingerprint,
                         senderProfileFingerprint = profileFingerprint,
+                        offersSenderResolutionFingerprint = if (reprocessAll) "" else storedState.offersSenderResolutionFingerprint,
                     ),
+                    processedMessages = batchProcessedMessages.toList(),
+                    deleteOfferIds = batchDeleteOfferIds.toList(),
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -182,39 +215,60 @@ class ScanSmsUseCase @Inject constructor(
                 throw ScanPersistenceException()
             }
             batchOffers.clear()
+            batchProcessedMessages.clear()
+            batchDeleteOfferIds.clear()
             batchMessageCount = 0
             _progress.value = _progress.value.copy(phase = ScanPhase.PROCESSING)
         }
 
         try {
             withContext(Dispatchers.Default) {
-                smsDataSource.readInbox(startingCursor).collect { message ->
+                smsDataSource.readInbox(after = startingCursor, dateRange = dateRange).collect { message ->
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     if (startingCursor != null && message.cursor <= startingCursor) return@collect
                     val priorSmsId = lastSeenSmsId
                     if (priorSmsId != null && message.id <= priorSmsId) return@collect
                     lastSeenSmsId = message.id
                     lastCursor = message.cursor
+                    observedSmsIds += message.id
                     processedMessages += 1
-                    batchMessageCount += 1
-
-                    val body = message.body
-                    if (body.isNullOrBlank()) {
-                        malformedMessages += 1
+                    val contentFingerprint = contentFingerprint(message)
+                    val previous = previousProcessedMessages[message.id]
+                    val unchanged = !fullRescan && !reprocessAll &&
+                        previous?.pipelineVersion == PROCESSING_PIPELINE_VERSION &&
+                        previous.contentFingerprint == contentFingerprint
+                    if (unchanged) {
+                        unchangedMessages += 1
                     } else {
-                        val metadata = try {
-                            val fingerprint = SenderIdNormalizer.fingerprint(message.address)
-                            offerExtractor.extract(message, fingerprint?.let(profilesBySender::get))
-                        } catch (cancellation: CancellationException) {
-                            throw cancellation
-                        } catch (_: Exception) {
+                        batchMessageCount += 1
+                        var producedOffer = false
+                        val body = message.body
+                        if (body.isNullOrBlank()) {
                             malformedMessages += 1
-                            null
+                        } else {
+                            val metadata = try {
+                                val fingerprint = SenderIdNormalizer.fingerprint(message.address)
+                                offerExtractor.extract(message, fingerprint?.let(profilesBySender::get))
+                            } catch (cancellation: CancellationException) {
+                                throw cancellation
+                            } catch (_: Exception) {
+                                malformedMessages += 1
+                                null
+                            }
+                            if (metadata != null) {
+                                batchOffers += message.toOffer(metadata, extractedAtMillis)
+                                offersFound += 1
+                                producedOffer = true
+                            }
                         }
-                        if (metadata != null) {
-                            batchOffers += message.toOffer(metadata, extractedAtMillis)
-                            offersFound += 1
-                        }
+                        if (!producedOffer && previous?.producedOffer == true) batchDeleteOfferIds += message.id
+                        batchProcessedMessages += ProcessedSmsRecord(
+                            smsId = message.id,
+                            sourceDateMillis = message.dateMillis,
+                            contentFingerprint = contentFingerprint,
+                            pipelineVersion = PROCESSING_PIPELINE_VERSION,
+                            producedOffer = producedOffer,
+                        )
                     }
 
                     val nowNanos = System.nanoTime()
@@ -254,7 +308,9 @@ class ScanSmsUseCase @Inject constructor(
                     lastSuccessfulScanAtMillis = completedAtMillis,
                     offersSenderProfileFingerprint = profileFingerprint,
                     senderProfileFingerprint = profileFingerprint,
+                    offersSenderResolutionFingerprint = resolutionFingerprint,
                 ),
+                reconciliation = ScanReconciliation(dateRange = dateRange, observedSmsIds = observedSmsIds),
             )
             _progress.value = _progress.value.copy(isScanning = false, phase = ScanPhase.COMPLETED)
             return ScanResult.Success(
@@ -262,6 +318,7 @@ class ScanSmsUseCase @Inject constructor(
                 offersUpserted = offersFound,
                 completedAtMillis = completedAtMillis,
                 malformedMessages = malformedMessages,
+                messagesUnchanged = unchangedMessages,
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -307,8 +364,33 @@ class ScanSmsUseCase @Inject constructor(
     )
 
     private class ScanPersistenceException : Exception()
+
+    private fun contentFingerprint(message: SmsMessage): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(message.address.orEmpty().toByteArray(Charsets.UTF_8))
+        digest.update(0.toByte())
+        digest.update(message.body.orEmpty().toByteArray(Charsets.UTF_8))
+        digest.update(0.toByte())
+        digest.update(message.dateMillis.toString().toByteArray(Charsets.UTF_8))
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private fun senderResolutionFingerprint(profiles: List<SenderMerchantProfile>): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        profiles.asSequence()
+            .filter { it.resolvedMerchantName != null }
+            .sortedBy(SenderMerchantProfile::senderFingerprint)
+            .forEach { profile ->
+                digest.update(profile.senderFingerprint.toByteArray(Charsets.UTF_8))
+                digest.update(0.toByte())
+                digest.update(profile.resolvedMerchantName.orEmpty().toByteArray(Charsets.UTF_8))
+                digest.update(0.toByte())
+            }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+    }
 }
 
 internal const val SCAN_BATCH_SIZE = 50
 private const val PROGRESS_MESSAGE_INTERVAL = 100
 private const val PROGRESS_TIME_INTERVAL_NANOS = 150_000_000L
+private const val PROCESSING_PIPELINE_VERSION = 1

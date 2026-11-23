@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.database.Cursor
 import android.provider.Telephony
 import com.example.smsdiscountorganizer.domain.sms.SmsDataSource
+import com.example.smsdiscountorganizer.domain.scan.SmsDateRange
 import com.example.smsdiscountorganizer.domain.sms.SmsCursor
 import com.example.smsdiscountorganizer.domain.sms.SmsInboxUnavailableException
 import com.example.smsdiscountorganizer.domain.sms.SmsMessage
@@ -25,6 +26,17 @@ class AndroidSmsDataSource @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : SmsDataSource {
     override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
+        readInboxRows(after, null)
+    }.flowOn(Dispatchers.IO)
+
+    override fun readInbox(after: SmsCursor?, dateRange: SmsDateRange?): Flow<SmsMessage> = flow {
+        readInboxRows(after, dateRange)
+    }.flowOn(Dispatchers.IO)
+
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<SmsMessage>.readInboxRows(
+        after: SmsCursor?,
+        dateRange: SmsDateRange?,
+    ) {
         checkReadPermission()
 
         val projection = arrayOf(
@@ -33,15 +45,12 @@ class AndroidSmsDataSource @Inject constructor(
             Telephony.Sms.BODY,
             Telephony.Sms.DATE,
         )
-        val selection = after?.let {
-            "${Telephony.Sms._ID} > ?"
-        }
-        val selectionArgs = after?.let { arrayOf(it.smsId.toString()) }
+        val queryBounds = inboxQueryBounds(after, dateRange)
         val cursor = context.contentResolver.query(
             Telephony.Sms.Inbox.CONTENT_URI,
             projection,
-            selection,
-            selectionArgs,
+            queryBounds.selection,
+            queryBounds.selectionArgs,
             "${Telephony.Sms._ID} ASC",
         ) ?: throw SmsInboxUnavailableException()
 
@@ -65,7 +74,7 @@ class AndroidSmsDataSource @Inject constructor(
                 )
             }
         }
-    }.flowOn(Dispatchers.IO)
+    }
 
     override suspend fun readMessageById(id: Long): SmsMessage? = withContext(Dispatchers.IO) {
         if (id <= 0L) return@withContext null
@@ -111,4 +120,27 @@ class AndroidSmsDataSource @Inject constructor(
             throw SecurityException("READ_SMS permission is not granted")
         }
     }
+}
+
+internal data class InboxQueryBounds(val selection: String?, val selectionArgs: Array<String>?)
+
+internal fun inboxQueryBounds(after: SmsCursor?, dateRange: SmsDateRange?): InboxQueryBounds {
+    val clauses = buildList {
+        if (after != null) add("${Telephony.Sms._ID} > ?")
+        if (dateRange != null) {
+            add("${Telephony.Sms.DATE} >= ?")
+            add("${Telephony.Sms.DATE} < ?")
+        }
+    }
+    val args = buildList {
+        if (after != null) add(after.smsId.toString())
+        if (dateRange != null) {
+            add(dateRange.startInclusiveMillis.toString())
+            add(dateRange.endExclusiveMillis.toString())
+        }
+    }
+    return InboxQueryBounds(
+        selection = clauses.takeIf { it.isNotEmpty() }?.joinToString(" AND "),
+        selectionArgs = args.toTypedArray().takeIf { args.isNotEmpty() },
+    )
 }

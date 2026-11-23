@@ -14,6 +14,15 @@ interface ScanRepository {
 
     suspend fun getSenderProfiles(): List<SenderMerchantProfile>
 
+    /** Returns body-free processing fingerprints in the selected provider-date window. */
+    suspend fun getProcessedSms(dateRange: SmsDateRange?): List<ProcessedSmsRecord> = emptyList()
+
     /** Persists offers and the next checkpoint in one database transaction. */
-    suspend fun commitScan(offers: List<Offer>, state: ScanState)
+    suspend fun commitScan(
+        offers: List<Offer>,
+        state: ScanState,
+        processedMessages: List<ProcessedSmsRecord> = emptyList(),
+        deleteOfferIds: List<Long> = emptyList(),
+        reconciliation: ScanReconciliation? = null,
+    )
 }

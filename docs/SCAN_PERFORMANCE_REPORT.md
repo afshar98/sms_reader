@@ -11,22 +11,23 @@ Measurements are diagnostic single-run samples, not release guarantees. JVM pipe
 - `PersianOfferExtractor` previously normalized a message, then re-normalized the same text in classification, merchant matching, discount parsing, and category extraction. Internal normalized-text entry points now reuse the first normalized string.
 - `MerchantRegistry` and `ProductCategoryExtractor` previously built alias/term regular expressions during message matching. They now prepare those patterns once per extractor instance.
 - Scan progress previously emitted a state update for each processed SMS. Updates now emit on the first message, every 100 messages, at least every 150 ms, and at save/checkpoint or terminal transitions.
-- Ordinary scans previously rebuilt sender profiles by reading the whole Inbox before each scan. They now seed the body-free profile builder from persisted profile aggregates and inspect only SMS IDs above the last checkpoint. A profile resolution change, stale offer/profile checkpoint, missing snapshot, or full rescan still causes a full offer reprocessing pass. A full rescan rebuilds sender profiles from the whole Inbox.
+- Ordinary scans seed the body-free profile builder from persisted profile aggregates and inspect only SMS IDs above the last checkpoint for new sender evidence.
 - Incremental profile seeding retains only sender fingerprints, merchant evidence counts, and derived profile fields. It does not retain SMS bodies.
+- Smart scanning now pushes a selected date range into the ContentResolver query and revisits provider rows in that range. A Room ledger compares per-message fingerprints and pipeline versions so unchanged rows skip the processing engine; edits and older-ID imports are discovered. Completed scans reconcile app-owned offers and ledger entries missing from the selected range.
 
 ## Synthetic pipeline results
 
 The test warms up with 1,000 synthetic messages, then runs the complete scanner against 1,000, 10,000, and 30,000 messages. The fake source and repository isolate parsing and scan orchestration; Android provider and disk-backed database latency are not included here.
 
-| Inbox rows | Before: duration | After: duration | Before: SMS/s | After: SMS/s | Offers (before / after) | Progress events after |
+| Inbox rows | Before: duration | After engine optimization: duration | Smart scan: duration | Smart scan SMS/s | Offers | Progress events |
 |---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 645 ms | 208 ms | 1,548 | 4,797 | 51 / 51 | 43 |
-| 10,000 | 5,857 ms | 1,752 ms | 1,707 | 5,704 | 501 / 501 | 399 |
-| 30,000 | 17,058 ms | 4,638 ms | 1,758 | 6,468 | 1,501 / 1,501 | 1,204 |
+| 1,000 | 645 ms | 208 ms | 217 ms | 4,601 | 51 | 43 |
+| 10,000 | 5,857 ms | 1,752 ms | 1,796 ms | 5,567 | 501 | 426 |
+| 30,000 | 17,058 ms | 4,638 ms | 4,569 ms | 6,564 | 1,501 | 1,209 |
 
-At 30,000 messages, the measured end-to-end synthetic scan improved by 72.8%. The first processed-message progress arrived after 1,762 ms, versus 6,668 ms before the changes. The scan request-to-`isScanning` StateFlow update was 0 ms in this host run; this does not measure Activity launch or rendered-frame latency.
+The 30,000-row smart scan completed in 4,569 ms in the host fixture, close to the 4,638 ms previous optimized scan (about 1.5% faster in these single-run samples). The first processed-message progress arrived after 1,680 ms. The scan request-to-`isScanning` StateFlow update was 5 ms in this host run; this does not measure Activity launch or rendered-frame latency.
 
-The old full scan used two fake-source reads. The repeated no-change scan now also uses two incremental reads after the saved ID, processes zero messages, and took 10 ms in the 30,000-row host fixture. The result retained all 1,501 offers without duplicates.
+The first scan used two fake-source reads (profile evidence plus offer processing). A repeated no-change scan revisited the bounded fixture in two reads, checked all 30,000 fingerprints, skipped processing for all 30,000 rows, retained all 1,501 offers without duplicates, and took 205 ms. The fixture materializes synthetic rows; production still streams provider cursor rows.
 
 ## Stage samples
 
@@ -54,11 +55,22 @@ On the attached SM-S711B running Android 16, an instrumented test wrote 1,500 sy
 
 This used `Room.inMemoryDatabaseBuilder`; it does not represent durable flash storage, cold database opening, or production query latency. It does expose the current transactional upsert cost, including correction-preserving lookups.
 
+## APK size
+
+Current local build outputs measured with `stat`:
+
+| Artifact | Size |
+|---|---:|
+| Debug APK | 65,488,363 bytes |
+| Unsigned release APK | 47,990,907 bytes |
+
+The previously recorded local artifacts were 65,461,879 bytes (debug) and 47,860,249 bytes (unsigned release). The current files are 26,484 bytes and 130,658 bytes larger respectively. This is a file-size comparison, not proof that the scan implementation alone caused the difference; no new library dependency was added.
+
 ## Memory, threading, and cancellation
 
 - The host benchmark reported an 87 MiB peak JVM heap-pool reading at 30,000 rows. The fixture itself materializes 30,000 synthetic messages, so this is not a measurement of the Android app's Inbox memory footprint or PSS.
 - Production Inbox access still streams `ContentResolver` cursor rows, closes the cursor with `use`, and uses `Dispatchers.IO`; extraction/profile work runs off the main thread and checks coroutine cancellation.
-- Offer writes remain in bounded batches of 50. Progress is now also bounded; the synthetic 30,000-message run emitted 1,203 progress events versus 30,622 before.
+- Offer and scan-ledger writes remain in bounded batches of 50. Progress is bounded; the synthetic 30,000-message run emitted 1,209 progress events versus 30,622 before.
 - Existing cancellation/checkpoint tests cover cancellation after a committed batch and ensure the next scan detects stale offer/profile state.
 - The test profile builder verifies that seeding a saved aggregate and adding new synthetic SMS yields the same profile and fingerprint as a full build.
 
@@ -78,7 +90,7 @@ gradle --offline :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRun
 BUILD SUCCESSFUL; 1 synthetic Room instrumentation test passed on SM-S711B / Android 16
 ```
 
-The full `:app:testDebugUnitTest` suite ran 299 tests: 297 passed and two Room Robolectric classes failed before their tests could start. Both failures are the same uncached `org.robolectric:android-all-instrumented:15-robolectric-14663667-2-i7` fetch, rejected by TLS certificate validation in this offline environment. A filtered rerun excluding only those two classes passed all 297 runnable tests. The synthetic Room instrumentation test passed on the connected device.
+For smart scanning, the focused host command covering `ScanSmsPipelineIntegrationTest`, `ScanSmsUseCaseTest`, `SmsDateRangeSelectionTest`, `InboxQueryBoundsTest`, and `ScanPerformanceBenchmarkTest` passed. The benchmark produced the measurements above. The full `:app:testDebugUnitTest` suite ran 309 tests: 307 passed and two Room Robolectric test classes failed before their tests could start because the uncached `org.robolectric:android-all-instrumented:15-robolectric-14663667-2-i7` artifact could not be fetched: TLS certificate validation failed in this offline environment. On the connected SM-S711B (Android 16), the focused synthetic instrumentation run passed all 7 tests across `ProcessedSmsLedgerTest`, `MerchantCategoryPersistenceTest`, and `SenderMerchantProfilePersistenceTest`, including the Room 4→9 migration path. No SMS provider or device Inbox was queried.
 
 ## Remaining measurement gaps
 
