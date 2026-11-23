@@ -66,6 +66,15 @@ class DiscountClassifierBehaviorTest {
     }
 
     @Test
+    fun specificDiscountPhraseDoesNotAlsoCountGenericDiscountKeyword() {
+        val result = classifier.classify("کد تخفیف برای خرید امروز")
+
+        assertEquals(ClassificationCategory.DISCOUNT, result.category)
+        assertTrue(result.reasons.any { it.ruleId == "discount_code" })
+        assertTrue(result.reasons.none { it.ruleId == "discount_keyword" })
+    }
+
+    @Test
     fun unknownMessagesHaveNoRuleReasons() {
         val result = classifier.classify("سلام، فردا ساعت ۹ می‌بینمت")
 

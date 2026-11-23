@@ -9,7 +9,15 @@ class DiscountClassifier(
 ) {
     fun classify(message: String): ClassificationResult {
         val normalizedText = normalizer.normalize(message).lowercase(Locale.ROOT)
-        val matchingRules = ruleRegistry.matchingRules(normalizedText)
+        val matchingRules = ruleRegistry.matchingRules(normalizedText).let { rules ->
+            // Specific phrases such as "کد تخفیف" already contain the generic keyword.
+            // Counting both as independent evidence inflates confidence without adding a signal.
+            if (rules.any { it.id in SPECIFIC_DISCOUNT_RULE_IDS }) {
+                rules.filterNot { it.id == GENERIC_DISCOUNT_RULE_ID }
+            } else {
+                rules
+            }
+        }
         if (matchingRules.isEmpty()) {
             return ClassificationResult(
                 category = ClassificationCategory.UNKNOWN,
@@ -51,6 +59,12 @@ class DiscountClassifier(
     }
 
     private companion object {
+        const val GENERIC_DISCOUNT_RULE_ID = "discount_keyword"
+        val SPECIFIC_DISCOUNT_RULE_IDS = setOf(
+            "discount_code",
+            "discount_percentage",
+            "discounted_purchase",
+        )
         const val CONFIDENCE_BASELINE = 20.0
         const val MAX_CONFIDENCE = 0.99
     }
