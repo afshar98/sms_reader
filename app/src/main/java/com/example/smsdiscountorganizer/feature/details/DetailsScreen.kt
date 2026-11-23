@@ -42,6 +42,7 @@ fun DetailsScreen(
     onBack: () -> Unit,
 ) {
     val offer by viewModel.offer.collectAsStateWithLifecycle()
+    val sourceText by viewModel.sourceText.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -113,7 +114,25 @@ fun DetailsScreen(
                     Text("اطمینان استخراج: ${(item.extractionConfidence * 100).toInt()}٪")
                     Text("زمان دریافت پیام: ${formatTimestamp(item.sourceDateMillis, zoneId)}")
                 }
+                OfferSourceTextCard(sourceText)
             }
+        }
+    }
+}
+
+@Composable
+internal fun OfferSourceTextCard(state: OfferSourceTextState) {
+    DetailCard("متن پیام اصلی") {
+        when (state) {
+            OfferSourceTextState.Loading -> Text("در حال دریافت متن پیام از صندوق ورودی…")
+            OfferSourceTextState.Unavailable -> Text(
+                "متن پیام در دسترس نیست. دسترسی پیامک لازم است و پیام باید هنوز در صندوق ورودی باشد."
+            )
+            is OfferSourceTextState.Available -> Text(
+                state.text,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

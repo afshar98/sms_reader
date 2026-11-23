@@ -164,6 +164,8 @@ class ScanSmsPipelineIntegrationTest {
                 repeat(SCAN_BATCH_SIZE) { index -> emit(message(index + 1L, null)) }
                 awaitCancellation()
             }
+
+            override suspend fun readMessageById(id: Long): SmsMessage? = null
         }
         val repository = InMemoryScanRepository(onCommit = { committed.complete(Unit) })
         val useCase = scanner(source, repository)
@@ -187,6 +189,8 @@ class ScanSmsPipelineIntegrationTest {
                     emit(message(index + 1L, "ordinary message without an offer"))
                 }
             }
+
+            override suspend fun readMessageById(id: Long): SmsMessage? = null
         }
         var commits = 0
         val repository = InMemoryScanRepository(onCommit = { commits++ })
@@ -232,6 +236,9 @@ class ScanSmsPipelineIntegrationTest {
                     .forEach { emit(it) }
             }
         }
+
+        override suspend fun readMessageById(id: Long): SmsMessage? =
+            messages.firstOrNull { it.id == id }
     }
 
     private class InMemoryScanRepository(

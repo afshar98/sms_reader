@@ -15,6 +15,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -65,6 +66,38 @@ class AndroidSmsDataSource @Inject constructor(
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    override suspend fun readMessageById(id: Long): SmsMessage? = withContext(Dispatchers.IO) {
+        if (id <= 0L) return@withContext null
+        checkReadPermission()
+
+        val projection = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE,
+        )
+        val cursor = context.contentResolver.query(
+            Telephony.Sms.Inbox.CONTENT_URI,
+            projection,
+            "${Telephony.Sms._ID} = ?",
+            arrayOf(id.toString()),
+            null,
+        ) ?: throw SmsInboxUnavailableException()
+
+        cursor.use { rows ->
+            if (!rows.moveToNext()) return@withContext null
+            val idColumn = rows.getColumnIndexOrThrow(Telephony.Sms._ID)
+            val bodyColumn = rows.getColumnIndexOrThrow(Telephony.Sms.BODY)
+            val dateColumn = rows.getColumnIndexOrThrow(Telephony.Sms.DATE)
+            val rowId = rows.readSafely { getLong(idColumn) } ?: return@withContext null
+            SmsMessage(
+                id = rowId,
+                address = null,
+                body = rows.readSafely { getString(bodyColumn) },
+                dateMillis = rows.readSafely { getLong(dateColumn) } ?: 0L,
+            )
+        }
+    }
 
     private inline fun <T> Cursor.readSafely(read: Cursor.() -> T): T? =
         try {

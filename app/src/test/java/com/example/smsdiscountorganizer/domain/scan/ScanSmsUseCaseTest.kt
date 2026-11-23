@@ -60,6 +60,8 @@ class ScanSmsUseCaseTest {
             override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
                 throw CancellationException("cancel scan")
             }
+
+            override suspend fun readMessageById(id: Long): SmsMessage? = null
         }
         val offers = InMemoryOfferRepository()
         val scans = InMemoryScanRepository(offers)
@@ -94,6 +96,9 @@ class ScanSmsUseCaseTest {
             cursors += after
             messages.sortedBy { it.id }.forEach { emit(it) }
         }
+
+        override suspend fun readMessageById(id: Long): SmsMessage? =
+            messages.firstOrNull { it.id == id }
     }
 
     private class InMemoryOfferRepository : OfferRepository {

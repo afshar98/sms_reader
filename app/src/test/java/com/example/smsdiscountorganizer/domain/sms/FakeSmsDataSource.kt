@@ -16,4 +16,9 @@ class FakeSmsDataSource(
                 .sortedBy { it.id }
                 .forEach { emit(it) }
         }
+
+    override suspend fun readMessageById(id: Long): SmsMessage? {
+        failure?.let { throw it }
+        return messages.firstOrNull { it.id == id }
+    }
 }

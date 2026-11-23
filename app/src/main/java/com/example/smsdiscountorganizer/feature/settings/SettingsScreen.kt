@@ -78,7 +78,8 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenSmsDiagnostics: () -> Uni
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("حریم خصوصی شما", style = MaterialTheme.typography.titleLarge)
                 Text("پیامک‌ها فقط از صندوق ورودی و فقط برای پردازش روی همین دستگاه خوانده می‌شوند.")
-                Text("برنامه هیچ پیامی ارسال، ویرایش یا حذف نمی‌کند. متن کامل پیام‌ها ذخیره یا ثبت نمی‌شود.")
+                Text("متن پیام تخفیف هنگام نمایش جزئیات، موقتاً از صندوق ورودی خوانده می‌شود؛ متن کامل پیام‌ها ذخیره یا ثبت نمی‌شود.")
+                Text("برنامه هیچ پیامی ارسال، ویرایش یا حذف نمی‌کند.")
                 Text("هیچ اتصال شبکه، سرویس ابری، تبلیغات یا رهگیری در برنامه وجود ندارد.")
             }
         }
