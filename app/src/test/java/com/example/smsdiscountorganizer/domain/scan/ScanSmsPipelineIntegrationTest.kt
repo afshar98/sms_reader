@@ -1,6 +1,7 @@
 package com.example.smsdiscountorganizer.domain.scan
 
 import com.example.smsdiscountorganizer.domain.offer.Offer
+import com.example.smsdiscountorganizer.domain.merchant.SenderMerchantProfile
 import com.example.smsdiscountorganizer.domain.sms.SmsCursor
 import com.example.smsdiscountorganizer.domain.sms.SmsDataSource
 import com.example.smsdiscountorganizer.domain.sms.SmsMessage
@@ -24,6 +25,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -53,6 +55,7 @@ class ScanSmsPipelineIntegrationTest {
         assertEquals(listOf(20.0), offer.percentageDiscounts)
         assertNotNull(offer.validUntilMillis)
         assertEquals(SmsCursor(message(1, "").dateMillis, 1L), repository.state?.cursor)
+        assertEquals(listOf(null, null), source.readAfter)
     }
 
     @Test
@@ -67,7 +70,10 @@ class ScanSmsPipelineIntegrationTest {
 
         assertEquals(1, (second as ScanResult.Success).messagesScanned)
         assertEquals(listOf(1L, 2L), repository.offers.keys.sorted())
-        assertEquals(listOf(null, SmsCursor(message(1, "").dateMillis, 1L)), source.readAfter)
+        assertEquals(
+            listOf(null, null, null, SmsCursor(message(1, "").dateMillis, 1L)),
+            source.readAfter,
+        )
     }
 
     @Test
@@ -83,7 +89,7 @@ class ScanSmsPipelineIntegrationTest {
         assertEquals(1, (result as ScanResult.Success).offersUpserted)
         assertEquals(listOf(5L), repository.offers.keys.toList())
         assertEquals("SAME40", repository.offers.getValue(5L).discountCode)
-        assertEquals(listOf(null, null), source.readAfter)
+        assertEquals(listOf(null, null, null, null), source.readAfter)
     }
 
     @Test
@@ -159,10 +165,12 @@ class ScanSmsPipelineIntegrationTest {
     @Test
     fun cancellationAfterCommittedBatchLeavesCheckpointSafeAndMarksProgressStopped() = runBlocking {
         val committed = CompletableDeferred<Unit>()
+        var readCount = 0
         val source = object : SmsDataSource {
             override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
+                readCount++
                 repeat(SCAN_BATCH_SIZE) { index -> emit(message(index + 1L, null)) }
-                awaitCancellation()
+                if (readCount == 2) awaitCancellation()
             }
 
             override suspend fun readMessageById(id: Long): SmsMessage? = null
@@ -206,6 +214,96 @@ class ScanSmsPipelineIntegrationTest {
         assertEquals(messageCount.toLong(), repository.state?.cursor?.smsId)
     }
 
+    @Test
+    fun profileChangeReprocessesOldOffersAndCurrentMessageEvidenceWins() = runBlocking {
+        val source = FakeFlowSmsDataSource(listOf(message(1, "۲۰٪ تخفیف کد SAME20")))
+        val repository = InMemoryScanRepository()
+        val useCase = scanner(source, repository)
+        useCase.scan()
+        assertNull(repository.offers.getValue(1L).merchantName)
+
+        source.messages += message(2, "نام فروشگاه: اسنپ‌فود")
+        source.messages += message(3, "نام فروشگاه: اسنپ‌فود")
+        source.messages += message(4, "نام فروشگاه: اسنپ‌فود")
+        val changed = useCase.scan()
+
+        assertEquals(4, (changed as ScanResult.Success).messagesScanned)
+        assertEquals("اسنپ‌فود", repository.offers.getValue(1L).merchantName)
+        assertEquals(listOf(1L), repository.offers.keys.toList())
+    }
+
+    @Test
+    fun historicalMerchantDoesNotSupplyCurrentMessageCategory() = runBlocking {
+        val profileSource = FakeFlowSmsDataSource(
+            listOf(
+                message(1, "نام فروشگاه: اسنپ‌فود"),
+                message(2, "نام فروشگاه: اسنپ‌فود"),
+                message(3, "نام فروشگاه: اسنپ‌فود"),
+                message(4, "۲۰٪ تخفیف کد AMBIGUOUS20"),
+            ),
+        )
+        val repository = InMemoryScanRepository()
+
+        scanner(profileSource, repository).scan()
+
+        assertEquals("اسنپ‌فود", repository.offers.getValue(4L).merchantName)
+        assertEquals(listOf(com.example.smsdiscountorganizer.domain.offer.OfferCategory.UNKNOWN), repository.offers.getValue(4L).applicableCategories)
+    }
+
+    @Test
+    fun currentMessageBrandOverridesConflictingSenderHistory() = runBlocking {
+        val source = FakeFlowSmsDataSource(
+            listOf(
+                message(1, "نام فروشگاه: اسنپ‌فود"),
+                message(2, "نام فروشگاه: اسنپ‌فود"),
+                message(3, "نام فروشگاه: اسنپ‌فود"),
+                message(4, "دیجی‌کالا ۲۰٪ تخفیف کد DIGI20"),
+            ),
+        )
+        val repository = InMemoryScanRepository()
+
+        scanner(source, repository).scan()
+
+        assertEquals("دیجی‌کالا", repository.offers.getValue(4L).merchantName)
+    }
+
+    @Test
+    fun cancelledFullRescanRemainsPendingAndNextScanReprocessesAllOffers() = runBlocking {
+        var reads = 0
+        var cancelProcessingPass = false
+        val processingPassStarted = CompletableDeferred<Unit>()
+        val source = object : SmsDataSource {
+            var current = message(1, "۲۰٪ تخفیف کد تخفیف OLD20")
+
+            override fun readInbox(after: SmsCursor?): Flow<SmsMessage> = flow {
+                reads += 1
+                emit(current)
+                if (cancelProcessingPass && reads == 4) {
+                    processingPassStarted.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+
+            override suspend fun readMessageById(id: Long): SmsMessage? = current.takeIf { it.id == id }
+        }
+        val repository = InMemoryScanRepository()
+        val useCase = scanner(source, repository)
+        useCase.scan()
+        source.current = message(1, "۴۰٪ تخفیف کد تخفیف NEW40")
+        cancelProcessingPass = true
+
+        val rescanJob = launch(Dispatchers.Default) { useCase.scan(fullRescan = true) }
+        processingPassStarted.await()
+        rescanJob.cancelAndJoin()
+
+        assertNotEquals(repository.state?.senderProfileFingerprint, repository.state?.offersSenderProfileFingerprint)
+        cancelProcessingPass = false
+        val resumed = useCase.scan()
+
+        assertEquals(1, (resumed as ScanResult.Success).messagesScanned)
+        assertEquals("NEW40", repository.offers.getValue(1L).discountCode)
+    }
+
     private fun scanner(
         source: SmsDataSource,
         repository: InMemoryScanRepository,
@@ -245,11 +343,19 @@ class ScanSmsPipelineIntegrationTest {
         private val onCommit: suspend () -> Unit = {},
     ) : ScanRepository {
         val offers = linkedMapOf<Long, Offer>()
+        private var profiles: List<SenderMerchantProfile> = emptyList()
         private val scanState = MutableStateFlow<ScanState?>(null)
         val state: ScanState? get() = scanState.value
 
         override fun observeScanState(): Flow<ScanState?> = scanState
         override suspend fun getScanState(): ScanState? = scanState.value
+
+        override suspend fun replaceSenderProfiles(profiles: List<SenderMerchantProfile>, fingerprint: String) {
+            this.profiles = profiles
+            scanState.value = (scanState.value ?: ScanState(null, 0L)).copy(senderProfileFingerprint = fingerprint)
+        }
+
+        override suspend fun getSenderProfiles(): List<SenderMerchantProfile> = profiles
 
         override suspend fun commitScan(offers: List<Offer>, state: ScanState) {
             offers.forEach { this.offers[it.sourceSmsId] = it }

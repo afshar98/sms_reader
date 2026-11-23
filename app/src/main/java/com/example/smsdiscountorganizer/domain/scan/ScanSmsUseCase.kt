@@ -1,11 +1,14 @@
 package com.example.smsdiscountorganizer.domain.scan
 
 import com.example.smsdiscountorganizer.domain.offer.Offer
+import com.example.smsdiscountorganizer.domain.merchant.SenderMerchantProfile
 import com.example.smsdiscountorganizer.domain.sms.SmsCursor
 import com.example.smsdiscountorganizer.domain.sms.SmsDataSource
 import com.example.smsdiscountorganizer.domain.sms.SmsMessage
 import com.example.smsdiscountorganizer.domain.sms.cursor
 import com.example.smsdiscountorganizer.engine.OfferExtractor
+import com.example.smsdiscountorganizer.engine.SenderIdNormalizer
+import com.example.smsdiscountorganizer.engine.SenderMerchantProfileBuilder
 import java.time.Clock
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -61,8 +64,69 @@ class ScanSmsUseCase @Inject constructor(
             return fail(ScanResult.Reason.PersistenceFailed)
         }
         val storedCursor = storedState?.cursor
-        val startingCursor = if (fullRescan) null else storedCursor
         val lastSuccessfulScanAt = storedState?.lastSuccessfulScanAtMillis ?: 0L
+        val profileBuilder = SenderMerchantProfileBuilder()
+        var profiledMessages = 0
+        _progress.value = _progress.value.copy(phase = ScanPhase.PROFILING)
+        try {
+            withContext(Dispatchers.Default) {
+                smsDataSource.readInbox(after = null).collect { message ->
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    profiledMessages += 1
+                    try {
+                        profileBuilder.add(message)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Exception) {
+                        // A malformed Inbox row contributes no merchant evidence.
+                    }
+                    if (profiledMessages % SCAN_BATCH_SIZE == 0) {
+                        _progress.value = _progress.value.copy(profiledMessages = profiledMessages)
+                    }
+                }
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: SecurityException) {
+            return fail(ScanResult.Reason.PermissionDenied)
+        } catch (_: Exception) {
+            return fail(ScanResult.Reason.InboxReadFailed)
+        }
+        _progress.value = _progress.value.copy(profiledMessages = profiledMessages)
+
+        val senderProfiles = profileBuilder.build()
+        val profileFingerprint = profileBuilder.fingerprint()
+        val previousOfferProfileFingerprint = storedState?.offersSenderProfileFingerprint.orEmpty()
+        val profilesChanged = storedState?.senderProfileFingerprint != profileFingerprint
+        if (profilesChanged) {
+            try {
+                scanRepository.replaceSenderProfiles(senderProfiles, profileFingerprint)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return fail(ScanResult.Reason.PersistenceFailed)
+            }
+        }
+        val reprocessAll = fullRescan || profilesChanged || previousOfferProfileFingerprint != profileFingerprint
+        if (reprocessAll && previousOfferProfileFingerprint == profileFingerprint) {
+            try {
+                scanRepository.commitScan(
+                    offers = emptyList(),
+                    state = ScanState(
+                        cursor = storedCursor,
+                        lastSuccessfulScanAtMillis = lastSuccessfulScanAt,
+                        offersSenderProfileFingerprint = "",
+                        senderProfileFingerprint = profileFingerprint,
+                    ),
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return fail(ScanResult.Reason.PersistenceFailed)
+            }
+        }
+        val startingCursor = if (reprocessAll) null else storedCursor
+        val profilesBySender = senderProfiles.associateBy(SenderMerchantProfile::senderFingerprint)
         var lastCursor = startingCursor
         var lastSeenSmsId = startingCursor?.smsId
         var processedMessages = 0
@@ -79,7 +143,12 @@ class ScanSmsUseCase @Inject constructor(
             try {
                 scanRepository.commitScan(
                     offers = batchOffers.toList(),
-                    state = ScanState(checkpointCursor, lastSuccessfulScanAt),
+                    state = ScanState(
+                        cursor = checkpointCursor,
+                        lastSuccessfulScanAtMillis = lastSuccessfulScanAt,
+                        offersSenderProfileFingerprint = if (reprocessAll) "" else previousOfferProfileFingerprint,
+                        senderProfileFingerprint = profileFingerprint,
+                    ),
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -108,7 +177,8 @@ class ScanSmsUseCase @Inject constructor(
                         malformedMessages += 1
                     } else {
                         val metadata = try {
-                            offerExtractor.extract(message)
+                            val fingerprint = SenderIdNormalizer.fingerprint(message.address)
+                            offerExtractor.extract(message, fingerprint?.let(profilesBySender::get))
                         } catch (cancellation: CancellationException) {
                             throw cancellation
                         } catch (_: Exception) {
@@ -146,7 +216,12 @@ class ScanSmsUseCase @Inject constructor(
             val completedAtMillis = clock.millis()
             scanRepository.commitScan(
                 offers = emptyList(),
-                state = ScanState(lastCursor, completedAtMillis),
+                state = ScanState(
+                    cursor = lastCursor,
+                    lastSuccessfulScanAtMillis = completedAtMillis,
+                    offersSenderProfileFingerprint = profileFingerprint,
+                    senderProfileFingerprint = profileFingerprint,
+                ),
             )
             _progress.value = _progress.value.copy(isScanning = false, phase = ScanPhase.COMPLETED)
             return ScanResult.Success(

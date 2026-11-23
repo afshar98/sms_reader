@@ -75,13 +75,14 @@ class MerchantCategoryPersistenceTest {
         }
 
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
         try {
             val row = migrated.offerDao().observeAll().first().single()
             assertEquals(listOf(OfferCategory.Electronics), row.applicableCategories)
             assertNull(row.merchantCorrection)
+            assertEquals(emptyList<SenderMerchantProfileEntity>(), migrated.senderMerchantProfileDao().getAll())
         } finally {
             migrated.close()
             context.deleteDatabase(name)

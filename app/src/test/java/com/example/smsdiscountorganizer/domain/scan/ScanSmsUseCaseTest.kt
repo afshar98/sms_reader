@@ -1,6 +1,7 @@
 package com.example.smsdiscountorganizer.domain.scan
 
 import com.example.smsdiscountorganizer.domain.offer.Offer
+import com.example.smsdiscountorganizer.domain.merchant.SenderMerchantProfile
 import com.example.smsdiscountorganizer.domain.offer.OfferMetadata
 import com.example.smsdiscountorganizer.domain.offer.MonetaryAmount
 import com.example.smsdiscountorganizer.domain.offer.MoneyCurrency
@@ -45,7 +46,10 @@ class ScanSmsUseCaseTest {
         assertEquals(ScanResult.Success(0, 0, scannedAt.toEpochMilli()), second)
         assertEquals(listOf(10L, 11L, 12L), offers.offers.keys.sorted())
         assertEquals(SmsCursor(50L, 12L), scans.state?.cursor)
-        assertEquals(listOf(SmsCursor(100L, 9L), SmsCursor(50L, 12L)), source.cursors)
+        assertEquals(
+            listOf(null, null, null, SmsCursor(50L, 12L)),
+            source.cursors,
+        )
         assertEquals(10L, offers.offers.getValue(10L).sourceSmsId)
         assertEquals("Saved offer", offers.offers.getValue(10L).title)
         assertEquals("Merchant", offers.offers.getValue(10L).merchantName)
@@ -121,12 +125,20 @@ class ScanSmsUseCaseTest {
         private val offers: InMemoryOfferRepository,
         initialState: ScanState? = null,
     ) : ScanRepository {
+        private var profiles: List<SenderMerchantProfile> = emptyList()
         var state = initialState
             private set
 
         override fun observeScanState(): Flow<ScanState?> = flowOf(state)
 
         override suspend fun getScanState(): ScanState? = state
+
+        override suspend fun replaceSenderProfiles(profiles: List<SenderMerchantProfile>, fingerprint: String) {
+            this.profiles = profiles
+            state = (state ?: ScanState(null, 0L)).copy(senderProfileFingerprint = fingerprint)
+        }
+
+        override suspend fun getSenderProfiles(): List<SenderMerchantProfile> = profiles
 
         override suspend fun commitScan(offers: List<Offer>, state: ScanState) {
             this.offers.upsertOffers(offers)

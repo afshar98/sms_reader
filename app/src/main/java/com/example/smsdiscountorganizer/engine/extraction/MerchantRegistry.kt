@@ -69,6 +69,16 @@ class MerchantRegistry(
         }?.canonicalName ?: value.trim()
     }
 
+    /** Returns every locally registered brand explicitly named in the supplied message. */
+    fun bodyMentions(text: String): Set<String> {
+        val normalizedText = normalize(text)
+        return definitions.filter { definition ->
+            (definition.aliases + definition.canonicalName).any { alias ->
+                containsWholeAlias(normalizedText, normalize(alias))
+            }
+        }.mapTo(linkedSetOf(), MerchantDefinition::canonicalName)
+    }
+
     private fun normalize(value: String): String =
         normalizer.normalize(value).lowercase(Locale.ROOT).replace(WHITESPACE, " ").trim()
 

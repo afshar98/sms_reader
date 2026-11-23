@@ -1,6 +1,7 @@
 package com.example.smsdiscountorganizer.engine.extraction
 
 import com.example.smsdiscountorganizer.domain.offer.OfferMetadata
+import com.example.smsdiscountorganizer.domain.merchant.SenderMerchantProfile
 import com.example.smsdiscountorganizer.domain.sms.SmsMessage
 import com.example.smsdiscountorganizer.engine.OfferExtractor
 import com.example.smsdiscountorganizer.engine.classification.ClassificationCategory
@@ -22,11 +23,22 @@ class PersianOfferExtractor(
     private val expirationResolver: PersianDateResolver = defaultExpirationResolver(),
     private val textNormalizer: PersianTextNormalizer = PersianTextNormalizer(),
 ) : OfferExtractor {
-    override fun extract(message: SmsMessage): OfferMetadata? {
+    override fun extract(message: SmsMessage): OfferMetadata? = extract(message, null)
+
+    override fun extract(message: SmsMessage, senderProfile: SenderMerchantProfile?): OfferMetadata? {
         val originalBody = message.body ?: return null
         val body = textNormalizer.normalize(originalBody)
         val classification = classifier.classify(body)
         if (classification.category != ClassificationCategory.DISCOUNT) return null
+
+        val merchantName = when (val current = merchantExtractor.resolveCurrent(body)) {
+            is CurrentMerchantEvidence.Identified -> current.merchantName
+            CurrentMerchantEvidence.Ambiguous -> null
+            CurrentMerchantEvidence.None -> when {
+                senderProfile != null -> senderProfile.resolvedMerchantName
+                else -> merchantExtractor.resolve(body, senderAddress = message.address)?.merchantName
+            }
+        }
 
         val discountValues = discountValueExtractor.extract(body)
         val expirationText = EXPIRATION_CONTEXT.find(body)?.let { body.substring(it.range.first) } ?: body
@@ -38,7 +50,7 @@ class PersianOfferExtractor(
             else -> null
         }
         return OfferMetadata(
-            merchantName = merchantExtractor.resolve(body, senderAddress = message.address)?.merchantName,
+            merchantName = merchantName,
             offerTitle = titleExtractor.extract(body),
             percentageDiscounts = discountValues.percentageDiscounts,
             fixedDiscounts = discountValues.fixedDiscounts,

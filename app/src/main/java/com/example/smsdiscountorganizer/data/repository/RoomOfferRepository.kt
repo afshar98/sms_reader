@@ -38,6 +38,7 @@ class RoomOfferRepository @Inject constructor(
         database.withTransaction {
             database.offerDao().deleteAll()
             database.scanStateDao().clear()
+            database.senderMerchantProfileDao().clear()
             database.appPreferenceDao().clearAll()
         }
     }

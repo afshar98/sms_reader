@@ -102,12 +102,16 @@ class AppDatabaseTest {
         database.offerDao().upsertAll(listOf(offer(44L, "Ten percent")))
         database.appPreferenceDao().save(AppPreferenceEntity("theme", true))
         database.scanStateDao().upsert(ScanStateEntity("inbox", 100L, 44L, 200L))
+        database.senderMerchantProfileDao().insertAll(
+            listOf(SenderMerchantProfileEntity("a".repeat(64), "دیجی‌کالا", 3, 3, false, false, 0.75, "دیجی‌کالا")),
+        )
 
         RoomOfferRepository(database).clearAllLocalData()
 
         assertEquals(0, database.offerDao().count())
         assertEquals(null, database.appPreferenceDao().observe("theme").first())
         assertEquals(null, database.scanStateDao().get())
+        assertEquals(0, database.senderMerchantProfileDao().getAll().size)
     }
 
     @Test
@@ -131,6 +135,7 @@ class AppDatabaseTest {
                 AppDatabase.MIGRATION_2_3,
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6,
             )
             .allowMainThreadQueries()
             .build()
@@ -180,7 +185,7 @@ class AppDatabaseTest {
         }
 
         database = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
         val migrated = database.offerDao().observeAll().first().single()
@@ -234,7 +239,7 @@ class AppDatabaseTest {
         }
 
         database = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
 

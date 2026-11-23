@@ -9,4 +9,6 @@ data class ScanStateEntity(
     val lastScannedSmsDateMillis: Long,
     val lastScannedSmsId: Long,
     val lastSuccessfulScanAtMillis: Long,
+    val senderProfileFingerprint: String = "",
+    val offersSenderProfileFingerprint: String = "",
 )

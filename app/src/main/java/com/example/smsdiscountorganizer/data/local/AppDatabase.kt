@@ -35,8 +35,8 @@ interface AppPreferenceDao {
 }
 
 @Database(
-    entities = [AppPreferenceEntity::class, OfferEntity::class, ScanStateEntity::class],
-    version = 5,
+    entities = [AppPreferenceEntity::class, OfferEntity::class, ScanStateEntity::class, SenderMerchantProfileEntity::class],
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(OfferConverters::class)
@@ -46,6 +46,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun offerDao(): OfferDao
 
     abstract fun scanStateDao(): ScanStateDao
+
+    abstract fun senderMerchantProfileDao(): SenderMerchantProfileDao
 
     companion object {
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
@@ -133,6 +135,30 @@ abstract class AppDatabase : RoomDatabase() {
                         WHEN 'Entertainment' THEN 'entertainment'
                         ELSE 'unknown'
                     END""".trimIndent(),
+                )
+            }
+        }
+
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE scan_state ADD COLUMN senderProfileFingerprint TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE scan_state ADD COLUMN offersSenderProfileFingerprint TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS sender_merchant_profiles (
+                        senderFingerprint TEXT NOT NULL,
+                        merchantName TEXT NOT NULL,
+                        supportingMessages INTEGER NOT NULL,
+                        totalSupportingMessages INTEGER NOT NULL,
+                        isConflicted INTEGER NOT NULL,
+                        isSharedGateway INTEGER NOT NULL,
+                        confidence REAL NOT NULL,
+                        resolvedMerchantName TEXT,
+                        PRIMARY KEY(senderFingerprint, merchantName)
+                    )""".trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_sender_merchant_profiles_senderFingerprint " +
+                        "ON sender_merchant_profiles (senderFingerprint)",
                 )
             }
         }

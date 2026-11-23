@@ -3,6 +3,7 @@ package com.example.smsdiscountorganizer.data.repository
 import androidx.room.Room
 import com.example.smsdiscountorganizer.data.local.AppDatabase
 import com.example.smsdiscountorganizer.domain.offer.Offer
+import com.example.smsdiscountorganizer.domain.merchant.SenderMerchantProfile
 import com.example.smsdiscountorganizer.domain.scan.ScanState
 import com.example.smsdiscountorganizer.domain.sms.SmsCursor
 import kotlinx.coroutines.flow.first
@@ -69,6 +70,56 @@ class RoomScanRepositoryTest {
         assertEquals(0, database.offerDao().count())
         assertEquals(null, repository.getScanState())
     }
+
+    @Test
+    fun replacingSenderSnapshotIsAtomicAndPersistsOnlyDerivedEvidence() = runBlocking {
+        val profile = SenderMerchantProfile(
+            senderFingerprint = "a".repeat(64),
+            merchantSupport = mapOf("دیجی‌کالا" to 3),
+            totalSupportingMessages = 3,
+            isConflicted = false,
+            isSharedGateway = false,
+            confidence = 0.75,
+            resolvedMerchantName = "دیجی‌کالا",
+        )
+
+        repository.replaceSenderProfiles(listOf(profile), "profile-version")
+
+        assertEquals(listOf(profile), repository.getSenderProfiles())
+        assertEquals("profile-version", repository.getScanState()?.senderProfileFingerprint)
+        assertEquals(3, database.senderMerchantProfileDao().getAll().single().supportingMessages)
+    }
+
+    @Test
+    fun failedSnapshotReplacementKeepsPreviousSenderProfiles() = runBlocking {
+        val first = profile("دیجی‌کالا", "one")
+        repository.replaceSenderProfiles(listOf(first), "first")
+        database.openHelper.writableDatabase.execSQL(
+            """CREATE TRIGGER fail_profile_fingerprint_insert BEFORE INSERT ON scan_state
+               BEGIN SELECT RAISE(ABORT, 'forced test failure'); END""",
+        )
+        database.openHelper.writableDatabase.execSQL(
+            """CREATE TRIGGER fail_profile_fingerprint_update BEFORE UPDATE ON scan_state
+               BEGIN SELECT RAISE(ABORT, 'forced test failure'); END""",
+        )
+
+        assertThrows(Exception::class.java) {
+            runBlocking { repository.replaceSenderProfiles(listOf(profile("اسنپ‌فود", "two")), "second") }
+        }
+
+        assertEquals(listOf(first), repository.getSenderProfiles())
+        assertEquals("first", repository.getScanState()?.senderProfileFingerprint)
+    }
+
+    private fun profile(merchant: String, fingerprint: String) = SenderMerchantProfile(
+        senderFingerprint = fingerprint,
+        merchantSupport = mapOf(merchant to 3),
+        totalSupportingMessages = 3,
+        isConflicted = false,
+        isSharedGateway = false,
+        confidence = 0.75,
+        resolvedMerchantName = merchant,
+    )
 
     private fun offer(sourceSmsId: Long) = Offer(
         sourceSmsId = sourceSmsId,
